@@ -1,3 +1,7 @@
 # Binaries
 tracker/bin
 client/bin
+
+# SQLite database file
+tracker/db.sqlite3
+client/db.sqlite3

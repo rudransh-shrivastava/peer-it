@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
+	"github.com/rudransh-shrivastava/peer-it/tracker/db"
 )
 
 var upgrader = websocket.Upgrader{
@@ -40,9 +41,15 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func main() {
+	_, err := db.NewDB()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	http.HandleFunc("/", wsHandler)
 	fmt.Println("Listening for web socket connections on port: 8080")
-	err := http.ListenAndServe(":8080", nil)
+	err = http.ListenAndServe(":8080", nil)
 	if err != nil {
 		fmt.Println(err)
 		return

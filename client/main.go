@@ -8,9 +8,16 @@ import (
 	"syscall"
 
 	"github.com/gorilla/websocket"
+	"github.com/rudransh-shrivastava/peer-it/client/db"
 )
 
 func main() {
+	_, err := db.NewDB()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	serverUrl := "ws://localhost:8080/"
 	conn, _, err := websocket.DefaultDialer.Dial(serverUrl, nil)
 	if err != nil {
