@@ -25,10 +25,9 @@ type Chunk struct {
 }
 
 type Client struct {
-	ID          uint `gorm:"primaryKey"`
-	IPAddress   string
-	Port        int
-	ConnectedAt int64
+	ID        uint `gorm:"primaryKey"`
+	IPAddress string
+	Port      string
 }
 
 type ClientChunk struct {
