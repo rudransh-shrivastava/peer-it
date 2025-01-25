@@ -4,7 +4,7 @@
 // 	protoc        v5.29.2
 // source: internal/shared/protocol/protocol.proto
 
-package __
+package protocol
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -631,6 +631,50 @@ func (x *HeartbeatMessage) GetTimestamp() int64 {
 	return 0
 }
 
+type GoodbyeMessage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PeerId        string                 `protobuf:"bytes,1,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GoodbyeMessage) Reset() {
+	*x = GoodbyeMessage{}
+	mi := &file_internal_shared_protocol_protocol_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GoodbyeMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GoodbyeMessage) ProtoMessage() {}
+
+func (x *GoodbyeMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_shared_protocol_protocol_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GoodbyeMessage.ProtoReflect.Descriptor instead.
+func (*GoodbyeMessage) Descriptor() ([]byte, []int) {
+	return file_internal_shared_protocol_protocol_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GoodbyeMessage) GetPeerId() string {
+	if x != nil {
+		return x.PeerId
+	}
+	return ""
+}
+
 var File_internal_shared_protocol_protocol_proto protoreflect.FileDescriptor
 
 var file_internal_shared_protocol_protocol_proto_rawDesc = string([]byte{
@@ -716,8 +760,15 @@ var file_internal_shared_protocol_protocol_proto_rawDesc = string([]byte{
 	0x63, 0x68, 0x75, 0x6e, 0x6b, 0x48, 0x61, 0x73, 0x68, 0x22, 0x30, 0x0a, 0x10, 0x48, 0x65, 0x61,
 	0x72, 0x74, 0x62, 0x65, 0x61, 0x74, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x1c, 0x0a,
 	0x09, 0x74, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03,
-	0x52, 0x09, 0x74, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x42, 0x04, 0x5a, 0x02, 0x2e,
-	0x2f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x52, 0x09, 0x74, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x22, 0x29, 0x0a, 0x0e, 0x47,
+	0x6f, 0x6f, 0x64, 0x62, 0x79, 0x65, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x17, 0x0a,
+	0x07, 0x70, 0x65, 0x65, 0x72, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06,
+	0x70, 0x65, 0x65, 0x72, 0x49, 0x64, 0x42, 0x42, 0x5a, 0x40, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
+	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x72, 0x75, 0x64, 0x72, 0x61, 0x6e, 0x73, 0x68, 0x2d, 0x73, 0x68,
+	0x72, 0x69, 0x76, 0x61, 0x73, 0x74, 0x61, 0x76, 0x61, 0x2f, 0x70, 0x65, 0x65, 0x72, 0x2d, 0x69,
+	0x74, 0x2f, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x6e, 0x61, 0x6c, 0x2f, 0x73, 0x68, 0x61, 0x72, 0x65,
+	0x64, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x63, 0x6f, 0x6c, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74,
+	0x6f, 0x33,
 })
 
 var (
@@ -732,7 +783,7 @@ func file_internal_shared_protocol_protocol_proto_rawDescGZIP() []byte {
 	return file_internal_shared_protocol_protocol_proto_rawDescData
 }
 
-var file_internal_shared_protocol_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_internal_shared_protocol_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_internal_shared_protocol_protocol_proto_goTypes = []any{
 	(*NetworkMessage)(nil),   // 0: protocol.NetworkMessage
 	(*PeerInfo)(nil),         // 1: protocol.PeerInfo
@@ -743,6 +794,7 @@ var file_internal_shared_protocol_protocol_proto_goTypes = []any{
 	(*ChunkRequest)(nil),     // 6: protocol.ChunkRequest
 	(*ChunkResponse)(nil),    // 7: protocol.ChunkResponse
 	(*HeartbeatMessage)(nil), // 8: protocol.HeartbeatMessage
+	(*GoodbyeMessage)(nil),   // 9: protocol.GoodbyeMessage
 }
 var file_internal_shared_protocol_protocol_proto_depIdxs = []int32{
 	3, // 0: protocol.NetworkMessage.announce:type_name -> protocol.AnnounceMessage
@@ -780,7 +832,7 @@ func file_internal_shared_protocol_protocol_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_shared_protocol_protocol_proto_rawDesc), len(file_internal_shared_protocol_protocol_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

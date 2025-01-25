@@ -1,25 +1,22 @@
 package cmd
 
 import (
+	"encoding/binary"
 	"fmt"
+	"log"
 	"net"
 	"os"
-	"os/signal"
-	"syscall"
+	"time"
 
-	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/proto"
 )
 
 var rootCmd = &cobra.Command{
 	Use:  `peer-it`,
 	Long: `peer-it is a peer to peer file transfer application`,
 	Run: func(cmd *cobra.Command, args []string) {
-		_, err := db.NewDB()
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
 		remoteAddr := "localhost:8080"
 		raddr, err := net.ResolveTCPAddr("tcp", remoteAddr)
 		if err != nil {
@@ -40,18 +37,40 @@ var rootCmd = &cobra.Command{
 
 		fmt.Println("Connected to", conn.RemoteAddr())
 
-		// Example: Send a simple message
-		_, err = conn.Write([]byte("PING"))
-		if err != nil {
-			fmt.Println("Error sending PING:", err)
-			return
+		for {
+			hb := &protocol.HeartbeatMessage{
+				Timestamp: time.Now().Unix(),
+			}
+
+			netMsg := &protocol.NetworkMessage{
+				MessageType: &protocol.NetworkMessage_Heartbeat{
+					Heartbeat: hb,
+				},
+			}
+
+			data, err := proto.Marshal(netMsg)
+			if err != nil {
+				fmt.Println("Error marshalling message:", err)
+				return
+			}
+
+			msgLen := uint32(len(data))
+			if err := binary.Write(conn, binary.BigEndian, msgLen); err != nil {
+				log.Printf("Error sending message length: %v", err)
+				return
+			}
+
+			if _, err := conn.Write(data); err != nil {
+				log.Printf("Error sending message: %v", err)
+				return
+			}
+			time.Sleep(2 * time.Second)
 		}
+		// done := make(chan os.Signal, 1)
+		// signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
 
-		done := make(chan os.Signal, 1)
-		signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
-
-		<-done
-		fmt.Println("exiting...")
+		// <-done
+		// fmt.Println("exiting...")
 	},
 }
 

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package protocol;
 
-option go_package = "./";
+option go_package = "github.com/rudransh-shrivastava/peer-it/internal/shared/protocol";
 
 message NetworkMessage {
     oneof message_type {
@@ -59,4 +59,8 @@ message ChunkResponse {
 
 message HeartbeatMessage {
     int64 timestamp = 2;
+}
+
+message GoodbyeMessage {
+    string peer_id = 1;
 }
