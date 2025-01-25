@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package protocol;
+
+option go_package = "./";
+
+message NetworkMessage {
+    oneof message_type {
+        AnnounceMessage announce = 1;
+        PeerListRequest peer_list_request = 2;
+        PeerListResponse peer_list_response = 3;
+        ChunkRequest chunk_request = 4;
+        ChunkResponse chunk_response = 5;
+        HeartbeatMessage heartbeat = 6;
+    }
+}
+
+message PeerInfo {
+    string peer_id = 1;
+    string ip_address = 2;
+    int32 port = 3;
+    int64 last_heartbeat = 4;
+}
+
+message FileInfo {
+    string file_hash = 1;
+    int32 total_chunks = 2;
+    int32 chunk_size = 3;
+}
+
+message AnnounceMessage {
+    PeerInfo peer = 2;
+    repeated FileInfo files = 3;
+}
+
+message PeerListRequest {
+    string file_hash = 2;
+}
+
+message PeerListResponse {
+    string file_hash = 2;
+    int32 total_chunks = 3;
+    int32 chunk_size = 4;
+    repeated PeerInfo peers = 5;
+}
+
+message ChunkRequest {
+    string file_hash = 2;
+    int32 chunk_index = 3;
+    string chunk_hash = 4;
+}
+
+message ChunkResponse {
+    string file_hash = 2;
+    int32 chunk_index = 3;
+    bytes chunk_data = 4;
+    string chunk_hash = 5;
+}
+
+message HeartbeatMessage {
+    int64 timestamp = 2;
+}

@@ -5,6 +5,7 @@ go 1.23.5
 require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/spf13/cobra v1.8.1
+	google.golang.org/protobuf v1.33.0
 	gorm.io/gorm v1.25.12
 )
 
