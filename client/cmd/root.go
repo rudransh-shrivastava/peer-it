@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/gorilla/websocket"
 	"github.com/rudransh-shrivastava/peer-it/client/db"
 	"github.com/spf13/cobra"
 )
@@ -20,16 +20,32 @@ var rootCmd = &cobra.Command{
 			fmt.Println(err)
 			return
 		}
-
-		serverUrl := "ws://localhost:8080/"
-		conn, _, err := websocket.DefaultDialer.Dial(serverUrl, nil)
+		remoteAddr := "localhost:8080"
+		raddr, err := net.ResolveTCPAddr("tcp", remoteAddr)
 		if err != nil {
-			fmt.Println(err)
-			return
+			fmt.Println("Error resolving remote address:", err)
+			os.Exit(1)
+		}
+		laddr := &net.TCPAddr{
+			IP:   net.ParseIP("0.0.0.0"),
+			Port: 26098,
+		}
+
+		conn, err := net.DialTCP("tcp", laddr, raddr)
+		if err != nil {
+			fmt.Println("Error dialing:", err)
+			os.Exit(1)
 		}
 		defer conn.Close()
 
-		fmt.Println("successfully connected to the web socket server")
+		fmt.Println("Connected to", conn.RemoteAddr())
+
+		// Example: Send a simple message
+		_, err = conn.Write([]byte("PING"))
+		if err != nil {
+			fmt.Println("Error sending PING:", err)
+			return
+		}
 
 		done := make(chan os.Signal, 1)
 		signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
