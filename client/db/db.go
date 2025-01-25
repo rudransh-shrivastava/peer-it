@@ -27,7 +27,7 @@ type Chunk struct {
 type Peer struct {
 	ID        uint `gorm:"primaryKey"`
 	IPAddress string
-	Port      int
+	Port      string
 }
 
 type PeerChunk struct {
