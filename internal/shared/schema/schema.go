@@ -1,9 +1,4 @@
-package db
-
-import (
-	"github.com/glebarez/sqlite"
-	"gorm.io/gorm"
-)
+package schema
 
 type File struct {
 	ID           uint `gorm:"primaryKey"`
@@ -36,22 +31,4 @@ type PeerChunk struct {
 	Peer    Peer  `gorm:"constraint:OnDelete:CASCADE"`
 	ChunkID uint  `gorm:"not null;foreignKey:ChunkID;constraint:OnDelete:CASCADE"`
 	Chunk   Chunk `gorm:"constraint:OnDelete:CASCADE"`
-}
-
-func NewDB() (*gorm.DB, error) {
-	db, err := gorm.Open(sqlite.Open("db.sqlite3"), &gorm.Config{
-		PrepareStmt: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-	sqlDB, err := db.DB()
-	sqlDB.Exec("PRAGMA foreign_keys = ON")
-
-	err = db.AutoMigrate(&File{}, &Chunk{}, &Peer{}, &PeerChunk{})
-
-	if err != nil {
-		return nil, err
-	}
-	return db, nil
 }

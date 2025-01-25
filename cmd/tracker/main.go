@@ -5,8 +5,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/rudransh-shrivastava/peer-it/tracker/db"
-	"github.com/rudransh-shrivastava/peer-it/tracker/store"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
+	"github.com/rudransh-shrivastava/peer-it/internal/tracker/db"
 )
 
 const (

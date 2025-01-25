@@ -1,7 +1,7 @@
 package store
 
 import (
-	"github.com/rudransh-shrivastava/peer-it/tracker/db"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
 	"gorm.io/gorm"
 )
 
@@ -14,16 +14,16 @@ func NewClientStore(db *gorm.DB) *ClientStore {
 }
 
 func (cs *ClientStore) CreateClient(ip string, port string) {
-	client := db.Client{IPAddress: ip, Port: port}
+	client := schema.Peer{IPAddress: ip, Port: port}
 	cs.DB.Create(&client)
 }
 
-func (cs *ClientStore) GetClients() []db.Client {
-	clients := []db.Client{}
+func (cs *ClientStore) GetClients() []schema.Peer {
+	clients := []schema.Peer{}
 	cs.DB.Find(&clients)
 	return clients
 }
 
 func (cs *ClientStore) DeleteClient(ip string) {
-	cs.DB.Where("ip_address = ?", ip).Delete(&db.Client{})
+	cs.DB.Where("ip_address = ?", ip).Delete(&schema.Peer{})
 }

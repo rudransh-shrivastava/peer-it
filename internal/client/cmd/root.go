@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/rudransh-shrivastava/peer-it/client/db"
+	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
 	"github.com/spf13/cobra"
 )
 
