@@ -16,7 +16,7 @@ func NewDB() (*gorm.DB, error) {
 	sqlDB, err := database.DB()
 	sqlDB.Exec("PRAGMA foreign_keys = ON")
 
-	err = database.AutoMigrate(&schema.File{}, &schema.Chunk{}, &schema.Peer{}, &schema.PeerChunk{})
+	err = database.AutoMigrate(&schema.File{}, &schema.Chunk{}, &schema.Peer{}, &schema.Swarm{})
 
 	if err != nil {
 		return nil, err

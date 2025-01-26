@@ -74,7 +74,7 @@ var registerCmd = &cobra.Command{
 			return
 		}
 
-		log.Println("lets create the chunks now")
+		log.Printf("Attempting to create chunks with metadata...")
 		chunkStore := store.NewChunkStore(db)
 
 		buffer := make([]byte, maxChunkSize)
@@ -91,7 +91,7 @@ var registerCmd = &cobra.Command{
 			}
 
 			checksum := generateChecksum(buffer[:n])
-			err = chunkStore.CreateChunk(&schemaFile, n, chunkIndex, checksum)
+			err = chunkStore.CreateChunk(&schemaFile, n, chunkIndex, checksum, false)
 			if err != nil {
 				log.Fatal(err)
 				return

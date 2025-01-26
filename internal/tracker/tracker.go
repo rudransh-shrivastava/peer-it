@@ -18,14 +18,16 @@ const (
 )
 
 type Tracker struct {
-	ClientStore *store.ClientStore
-	FileStore   *store.FileStore
+	PeerStore  *store.PeerStore
+	FileStore  *store.FileStore
+	ChunkStore *store.ChunkStore
 }
 
-func NewTracker(clientStore *store.ClientStore, fileStore *store.FileStore) *Tracker {
+func NewTracker(peerStore *store.PeerStore, fileStore *store.FileStore, chunkStore *store.ChunkStore) *Tracker {
 	return &Tracker{
-		ClientStore: clientStore,
-		FileStore:   fileStore,
+		PeerStore:  peerStore,
+		FileStore:  fileStore,
+		ChunkStore: chunkStore,
 	}
 }
 
@@ -61,12 +63,13 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 	}
 
 	log.Printf("New client connected: %s\n", remoteAddr)
-	err = t.ClientStore.CreateClient(clientIP, clientPort)
+	err = t.PeerStore.CreatePeer(clientIP, clientPort)
 	if err != nil {
 		log.Printf("Error creating client: %v", err)
 		return
 	}
 
+	// Start a timer to track client timeout
 	timeout := time.NewTicker(ClientTimeout * time.Second)
 	defer timeout.Stop()
 
@@ -75,7 +78,7 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 		// If the client times out, delete the client from the db
 		case <-timeout.C:
 			log.Printf("Client %s timed out, deleting \n", remoteAddr)
-			err := t.ClientStore.DeleteClient(clientIP, clientPort)
+			err := t.PeerStore.DeletePeer(clientIP, clientPort)
 			if err != nil {
 				log.Printf("Error deleting client: %v", err)
 			}
@@ -111,10 +114,13 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 				files := msg.Announce.GetFiles()
 				log.Printf("Announce Files: %+v", files)
 				for _, file := range files {
+					totalChunks := int(file.GetTotalChunks())
+					maxChunkSize := int(file.GetChunkSize())
+					lastChunkSize := int(file.GetFileSize() % int64(maxChunkSize))
 					schemaFile := &schema.File{
 						Size:         file.GetFileSize(),
-						MaxChunkSize: int(file.GetChunkSize()),
-						TotalChunks:  int(file.GetTotalChunks()),
+						MaxChunkSize: maxChunkSize,
+						TotalChunks:  totalChunks,
 						Checksum:     file.GetFileHash(),
 						CreatedAt:    time.Now().Unix(),
 					}
@@ -123,11 +129,22 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 						log.Printf("Error creating file: %v", err)
 					}
 					if !created {
+						// File already existed in db
 						log.Printf("File %+v already exists, adding client to swarm", schemaFile)
-						// TODO: add client to swarm of peers
+					} else {
+						log.Printf("Attemping to create chunks")
+						for i := 0; i < totalChunks; i++ {
+							if i == totalChunks-1 {
+								// Create the last chunk without metadata
+								t.ChunkStore.CreateChunk(schemaFile, lastChunkSize, i, "any checksum", false)
+							}
+							// Create a full chunk without metadata
+							t.ChunkStore.CreateChunk(schemaFile, maxChunkSize, i, "any checksum", false)
+						}
+						log.Printf("File: %s, Size: %d, Chunks: %d Max Chunk Size: %d", file.GetFileHash(), file.GetFileSize(), file.GetTotalChunks(), file.GetChunkSize())
 					}
-					log.Printf("File: %s, Size: %d, Chunks: %d Max Chunk Size: %d", file.GetFileHash(), file.GetFileSize(), file.GetTotalChunks(), file.GetChunkSize())
-					// TODO: still add client to swarm of peers
+					// TODO: add client to swarm of peers
+					// err = t.PeerStore.AddPeerToSwarm(clientIP, clientPort, file.GetFileHash())
 				}
 			default:
 				log.Printf("Received unsupported message type from %s", remoteAddr)

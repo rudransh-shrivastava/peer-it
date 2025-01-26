@@ -15,9 +15,10 @@ func main() {
 		return
 	}
 
-	clientStore := store.NewClientStore(db)
+	peerStore := store.NewPeerStore(db)
 	fileStore := store.NewFileStore(db)
-	tracker := tracker.NewTracker(clientStore, fileStore)
+	chunkStore := store.NewChunkStore(db)
+	tracker := tracker.NewTracker(peerStore, fileStore, chunkStore)
 
 	tracker.Start()
 }
