@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
 	"google.golang.org/protobuf/proto"
 )
@@ -18,11 +19,13 @@ const (
 
 type Tracker struct {
 	ClientStore *store.ClientStore
+	FileStore   *store.FileStore
 }
 
-func NewTracker(clientStore *store.ClientStore) *Tracker {
+func NewTracker(clientStore *store.ClientStore, fileStore *store.FileStore) *Tracker {
 	return &Tracker{
 		ClientStore: clientStore,
+		FileStore:   fileStore,
 	}
 }
 
@@ -71,7 +74,7 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 		select {
 		// If the client times out, delete the client from the db
 		case <-timeout.C:
-			log.Printf("Client %s timed out\n", remoteAddr)
+			log.Printf("Client %s timed out, deleting \n", remoteAddr)
 			err := t.ClientStore.DeleteClient(clientIP, clientPort)
 			if err != nil {
 				log.Printf("Error deleting client: %v", err)
@@ -101,10 +104,33 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 			switch msg := netMsg.MessageType.(type) {
 			// Reset the timer if the message is a heartbeat
 			case *protocol.NetworkMessage_Heartbeat:
-				log.Printf("Received heartbeat from %s: %v", clientIP, msg.Heartbeat)
+				log.Printf("Received heartbeat from %s: %v", remoteAddr, msg.Heartbeat)
 				timeout.Reset(ClientTimeout * time.Second)
+			case *protocol.NetworkMessage_Announce:
+				log.Printf("Received announce from %s: %v", remoteAddr, msg.Announce)
+				files := msg.Announce.GetFiles()
+				log.Printf("Announce Files: %+v", files)
+				for _, file := range files {
+					schemaFile := &schema.File{
+						Size:         file.GetFileSize(),
+						MaxChunkSize: int(file.GetChunkSize()),
+						TotalChunks:  int(file.GetTotalChunks()),
+						Checksum:     file.GetFileHash(),
+						CreatedAt:    time.Now().Unix(),
+					}
+					created, err := t.FileStore.CreateFile(schemaFile)
+					if err != nil {
+						log.Printf("Error creating file: %v", err)
+					}
+					if !created {
+						log.Printf("File %+v already exists, adding client to swarm", schemaFile)
+						// TODO: add client to swarm of peers
+					}
+					log.Printf("File: %s, Size: %d, Chunks: %d Max Chunk Size: %d", file.GetFileHash(), file.GetFileSize(), file.GetTotalChunks(), file.GetChunkSize())
+					// TODO: still add client to swarm of peers
+				}
 			default:
-				log.Printf("Received unsupported message type from %s", clientIP)
+				log.Printf("Received unsupported message type from %s", remoteAddr)
 			}
 		}
 	}

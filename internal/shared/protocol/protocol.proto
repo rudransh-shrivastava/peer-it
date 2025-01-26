@@ -24,40 +24,41 @@ message PeerInfo {
 
 message FileInfo {
     string file_hash = 1;
-    int32 total_chunks = 2;
-    int32 chunk_size = 3;
+    int64 file_size = 2;
+    int32 total_chunks = 3;
+    int32 chunk_size = 4;
 }
 
 message AnnounceMessage {
-    repeated FileInfo files = 3;
+    repeated FileInfo files = 1;
 }
 
 message PeerListRequest {
-    string file_hash = 2;
+    string file_hash = 1;
 }
 
 message PeerListResponse {
-    string file_hash = 2;
-    int32 total_chunks = 3;
-    int32 chunk_size = 4;
-    repeated PeerInfo peers = 5;
+    string file_hash = 1;
+    int32 total_chunks = 2;
+    int32 chunk_size = 3;
+    repeated PeerInfo peers = 4;
 }
 
 message ChunkRequest {
-    string file_hash = 2;
-    int32 chunk_index = 3;
-    string chunk_hash = 4;
+    string file_hash = 1;
+    int32 chunk_index = 2;
+    string chunk_hash = 3;
 }
 
 message ChunkResponse {
-    string file_hash = 2;
-    int32 chunk_index = 3;
-    bytes chunk_data = 4;
-    string chunk_hash = 5;
+    string file_hash = 1;
+    int32 chunk_index = 2;
+    bytes chunk_data = 3;
+    string chunk_hash = 4;
 }
 
 message HeartbeatMessage {
-    int64 timestamp = 2;
+    int64 timestamp = 1;
 }
 
 message GoodbyeMessage {

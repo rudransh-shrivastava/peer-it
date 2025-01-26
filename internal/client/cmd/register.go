@@ -56,7 +56,6 @@ var registerCmd = &cobra.Command{
 		fileStore := store.NewFileStore(db)
 
 		schemaFile := schema.File{
-			Name:         fileName,
 			Size:         fileSize,
 			MaxChunkSize: maxChunkSize,
 			TotalChunks:  fileTotalChunks,
@@ -65,7 +64,11 @@ var registerCmd = &cobra.Command{
 		}
 		// log the stats of the file
 		log.Printf("file: %s with size %d and checksum %s\n", fileName, fileSize, fileChecksum)
-		err = fileStore.CreateFile(&schemaFile)
+		created, err := fileStore.CreateFile(&schemaFile)
+		if !created {
+			log.Println("file already exists")
+			return
+		}
 		if err != nil {
 			log.Fatal(err)
 			return

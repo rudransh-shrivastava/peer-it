@@ -16,7 +16,8 @@ func main() {
 	}
 
 	clientStore := store.NewClientStore(db)
-	tracker := tracker.NewTracker(clientStore)
+	fileStore := store.NewFileStore(db)
+	tracker := tracker.NewTracker(clientStore, fileStore)
 
 	tracker.Start()
 }

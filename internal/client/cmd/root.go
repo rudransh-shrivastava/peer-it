@@ -9,7 +9,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 )
@@ -43,14 +45,53 @@ var rootCmd = &cobra.Command{
 		done := make(chan os.Signal, 1)
 		signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
 
-		// Send an Announce message to the tracker
-		// files := []protocol.FileInfo{}
-		// open downloads/complete
-		// loop thru the files
-		// get the file hash
-		// append it to files
-		// announce := &protocol.AnnounceMessage{}
+		// TODO: REMOVE file store from here, add it to a struct later
+		db, err := db.NewDB()
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+		fileStore := store.NewFileStore(db)
+		// Send an Announce message to the tracker the first time we connect
+		files, err := fileStore.GetFiles()
+		if err != nil {
+			log.Println("Error getting files:", err)
+			return
+		}
+		fileInfoMsgs := make([]*protocol.FileInfo, 0)
+		for _, file := range files {
+			fileInfoMsgs = append(fileInfoMsgs, &protocol.FileInfo{
+				FileSize:    file.Size,
+				ChunkSize:   int32(file.MaxChunkSize),
+				FileHash:    file.Checksum,
+				TotalChunks: int32(file.TotalChunks),
+			})
+		}
+		log.Printf("Preparing to send announce to tracker with files: %+v", fileInfoMsgs)
+		announceMsg := &protocol.AnnounceMessage{
+			Files: fileInfoMsgs,
+		}
+		netMsg := &protocol.NetworkMessage{
+			MessageType: &protocol.NetworkMessage_Announce{
+				Announce: announceMsg,
+			},
+		}
+		data, err := proto.Marshal(netMsg)
+		if err != nil {
+			log.Println("Error marshalling message:", err)
+			return
+		}
+		msgLen := uint32(len(data))
+		if err := binary.Write(conn, binary.BigEndian, msgLen); err != nil {
+			log.Printf("Error sending message length: %v", err)
+			return
+		}
 
+		if _, err := conn.Write(data); err != nil {
+			log.Printf("Error sending message: %v", err)
+			return
+		}
+		log.Printf("Sent announce to tracker: %+v", announceMsg)
 		// Send heartbeats every n seconds
 		ticker := time.NewTicker(heartbeatInterval * time.Second)
 		defer ticker.Stop()
