@@ -3,7 +3,7 @@ package schema
 type File struct {
 	ID           uint `gorm:"primaryKey"`
 	Name         string
-	Size         int
+	Size         int64
 	MaxChunkSize int
 	TotalChunks  int
 	Checksum     string

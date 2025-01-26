@@ -15,6 +15,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const heartbeatInterval = 5
+
 var rootCmd = &cobra.Command{
 	Use:  `peer-it`,
 	Long: `peer-it is a peer to peer file transfer application`,
@@ -42,7 +44,16 @@ var rootCmd = &cobra.Command{
 		done := make(chan os.Signal, 1)
 		signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
 
-		ticker := time.NewTicker(5 * time.Second)
+		// Send an Announce message to the tracker
+		// files := []protocol.FileInfo{}
+		// open downloads/complete
+		// loop thru the files
+		// get the file hash
+		// append it to files
+		// announce := &protocol.AnnounceMessage{}
+
+		// Send heartbeats every n seconds
+		ticker := time.NewTicker(heartbeatInterval * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
@@ -72,7 +83,6 @@ var rootCmd = &cobra.Command{
 					log.Printf("Error sending message: %v", err)
 					return
 				}
-				time.Sleep(2 * time.Second)
 			case <-done:
 				fmt.Println("exiting...")
 				return

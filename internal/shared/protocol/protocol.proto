@@ -29,7 +29,6 @@ message FileInfo {
 }
 
 message AnnounceMessage {
-    PeerInfo peer = 2;
     repeated FileInfo files = 3;
 }
 
