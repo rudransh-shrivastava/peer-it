@@ -1,8 +1,6 @@
 package store
 
 import (
-	"fmt"
-
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
 	"gorm.io/gorm"
 )
@@ -15,7 +13,6 @@ func NewFileStore(db *gorm.DB) *FileStore {
 	return &FileStore{DB: db}
 }
 
-func (fs *FileStore) CreateFile(file *schema.File) {
-	fmt.Println("creating the file ----++++=----")
-	fs.DB.Create(&file)
+func (fs *FileStore) CreateFile(file *schema.File) error {
+	return fs.DB.Create(&file).Error
 }

@@ -13,17 +13,20 @@ func NewClientStore(db *gorm.DB) *ClientStore {
 	return &ClientStore{DB: db}
 }
 
-func (cs *ClientStore) CreateClient(ip string, port string) {
+func (cs *ClientStore) CreateClient(ip string, port string) error {
 	client := schema.Peer{IPAddress: ip, Port: port}
-	cs.DB.Create(&client)
+	return cs.DB.Create(&client).Error
 }
 
-func (cs *ClientStore) GetClients() []schema.Peer {
+func (cs *ClientStore) GetClients() ([]schema.Peer, error) {
 	clients := []schema.Peer{}
-	cs.DB.Find(&clients)
-	return clients
+	err := cs.DB.Find(&clients).Error
+	if err != nil {
+		return nil, err
+	}
+	return clients, nil
 }
 
-func (cs *ClientStore) DeleteClient(ip string, port string) {
-	cs.DB.Where("ip_address = ? AND port = ?", ip, port).Delete(&schema.Peer{})
+func (cs *ClientStore) DeleteClient(ip string, port string) error {
+	return cs.DB.Where("ip_address = ? AND port = ?", ip, port).Delete(&schema.Peer{}).Error
 }

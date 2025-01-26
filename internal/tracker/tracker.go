@@ -2,7 +2,6 @@ package tracker
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -30,17 +29,17 @@ func NewTracker(clientStore *store.ClientStore) *Tracker {
 func (t *Tracker) Start() {
 	listen, err := net.Listen("tcp", ":8080")
 	if err != nil {
-		fmt.Println("Error starting TCP server:", err)
+		log.Println("Error starting TCP server:", err)
 		return
 	}
 	defer listen.Close()
 
-	fmt.Println("Server listening on port 8080")
+	log.Println("Server listening on port 8080")
 
 	for {
 		conn, err := listen.Accept()
 		if err != nil {
-			fmt.Println("Error accepting connection:", err)
+			log.Println("Error accepting connection:", err)
 			continue
 		}
 		// Handle connection
@@ -58,8 +57,12 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 		return
 	}
 
-	fmt.Printf("New client connected: %s\n", remoteAddr)
-	t.ClientStore.CreateClient(clientIP, clientPort)
+	log.Printf("New client connected: %s\n", remoteAddr)
+	err = t.ClientStore.CreateClient(clientIP, clientPort)
+	if err != nil {
+		log.Printf("Error creating client: %v", err)
+		return
+	}
 
 	timeout := time.NewTicker(ClientTimeout * time.Second)
 	defer timeout.Stop()
@@ -68,8 +71,11 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 		select {
 		// If the client times out, delete the client from the db
 		case <-timeout.C:
-			fmt.Printf("Client %s timed out\n", remoteAddr)
-			t.ClientStore.DeleteClient(clientIP, clientPort)
+			log.Printf("Client %s timed out\n", remoteAddr)
+			err := t.ClientStore.DeleteClient(clientIP, clientPort)
+			if err != nil {
+				log.Printf("Error deleting client: %v", err)
+			}
 			return
 		default:
 			var msgLen uint32

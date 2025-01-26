@@ -28,7 +28,7 @@ var registerCmd = &cobra.Command{
 
 		file, err := os.Open(filePath)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return
 		}
 		defer file.Close()
@@ -64,10 +64,14 @@ var registerCmd = &cobra.Command{
 			CreatedAt:    time.Now().Unix(),
 		}
 		// log the stats of the file
-		fmt.Printf("file: %s with size %d and checksum %s\n", fileName, fileSize, fileChecksum)
-		fileStore.CreateFile(&schemaFile)
+		log.Printf("file: %s with size %d and checksum %s\n", fileName, fileSize, fileChecksum)
+		err = fileStore.CreateFile(&schemaFile)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
 
-		fmt.Println("lets create the chunks now")
+		log.Println("lets create the chunks now")
 		chunkStore := store.NewChunkStore(db)
 
 		buffer := make([]byte, maxChunkSize)
@@ -76,18 +80,20 @@ var registerCmd = &cobra.Command{
 		for {
 			n, err := file.Read(buffer)
 			if err != nil && err != io.EOF {
-				fmt.Println(err)
+				log.Println(err)
 				return
 			}
 			if n == 0 {
-				fmt.Println("n == 0 hit")
 				break
 			}
 
 			checksum := generateChecksum(buffer[:n])
-			fmt.Println("here")
-			chunkStore.CreateChunk(&schemaFile, n, chunkIndex, checksum)
-			fmt.Printf("chunk %d: %s with size %d\n", chunkIndex, checksum, n)
+			err = chunkStore.CreateChunk(&schemaFile, n, chunkIndex, checksum)
+			if err != nil {
+				log.Fatal(err)
+				return
+			}
+			log.Printf("chunk %d: %s with size %d\n", chunkIndex, checksum, n)
 			chunkIndex++
 		}
 
@@ -105,7 +111,7 @@ var registerCmd = &cobra.Command{
 			return
 		}
 
-		fmt.Printf("registered %s successfully with the tracker \n", filePath)
+		log.Printf("registered %s successfully with the tracker \n", filePath)
 	},
 }
 

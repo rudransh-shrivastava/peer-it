@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/binary"
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -24,7 +23,7 @@ var rootCmd = &cobra.Command{
 		remoteAddr := "localhost:8080"
 		raddr, err := net.ResolveTCPAddr("tcp", remoteAddr)
 		if err != nil {
-			fmt.Println("Error resolving remote address:", err)
+			log.Println("Error resolving remote address:", err)
 			os.Exit(1)
 		}
 		laddr := &net.TCPAddr{
@@ -34,12 +33,12 @@ var rootCmd = &cobra.Command{
 
 		conn, err := net.DialTCP("tcp", laddr, raddr)
 		if err != nil {
-			fmt.Println("Error dialing:", err)
+			log.Println("Error dialing:", err)
 			os.Exit(1)
 		}
 		defer conn.Close()
 
-		fmt.Println("Connected to", conn.RemoteAddr())
+		log.Println("Connected to", conn.RemoteAddr())
 
 		done := make(chan os.Signal, 1)
 		signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
@@ -70,7 +69,7 @@ var rootCmd = &cobra.Command{
 
 				data, err := proto.Marshal(netMsg)
 				if err != nil {
-					fmt.Println("Error marshalling message:", err)
+					log.Println("Error marshalling message:", err)
 					return
 				}
 				msgLen := uint32(len(data))
@@ -84,7 +83,7 @@ var rootCmd = &cobra.Command{
 					return
 				}
 			case <-done:
-				fmt.Println("exiting...")
+				log.Println("exiting...")
 				return
 			}
 		}
@@ -94,7 +93,7 @@ var rootCmd = &cobra.Command{
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error while executing'%s'", err)
+		log.Fatal(err)
 		os.Exit(1)
 	}
 }
