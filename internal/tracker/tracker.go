@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"time"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
@@ -60,37 +61,45 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 	fmt.Printf("New client connected: %s\n", remoteAddr)
 	t.ClientStore.CreateClient(clientIP, clientPort)
 
+	timeout := time.NewTicker(ClientTimeout * time.Second)
+	defer timeout.Stop()
+
 	for {
-		var msgLen uint32
-		if err := binary.Read(conn, binary.BigEndian, &msgLen); err != nil {
-			if err != io.EOF {
-				log.Printf("Error reading message length: %v", err)
-			}
-			break
-		}
-
-		data := make([]byte, msgLen)
-		if _, err := io.ReadFull(conn, data); err != nil {
-			log.Printf("Error reading message body: %v", err)
-			break
-		}
-
-		var netMsg protocol.NetworkMessage
-		if err := proto.Unmarshal(data, &netMsg); err != nil {
-			log.Printf("Error unmarshaling message: %v", err)
-			continue
-		}
-
-		switch msg := netMsg.MessageType.(type) {
-		case *protocol.NetworkMessage_Heartbeat:
-			// Update last heartbeat time
-			log.Printf("Received heartbeat from %s: %v", clientIP, msg.Heartbeat)
-
-			// Check client timeout in background
-			// go t.CheckClientTimeout(clientIP)
-
+		select {
+		// If the client times out, delete the client from the db
+		case <-timeout.C:
+			fmt.Printf("Client %s timed out\n", remoteAddr)
+			t.ClientStore.DeleteClient(clientIP, clientPort)
+			return
 		default:
-			log.Printf("Received unsupported message type from %s", clientIP)
+			var msgLen uint32
+			if err := binary.Read(conn, binary.BigEndian, &msgLen); err != nil {
+				if err != io.EOF {
+					log.Printf("Error reading message length: %v", err)
+				}
+				break
+			}
+
+			data := make([]byte, msgLen)
+			if _, err := io.ReadFull(conn, data); err != nil {
+				log.Printf("Error reading message body: %v", err)
+				break
+			}
+
+			var netMsg protocol.NetworkMessage
+			if err := proto.Unmarshal(data, &netMsg); err != nil {
+				log.Printf("Error unmarshaling message: %v", err)
+				continue
+			}
+
+			switch msg := netMsg.MessageType.(type) {
+			// Reset the timer if the message is a heartbeat
+			case *protocol.NetworkMessage_Heartbeat:
+				log.Printf("Received heartbeat from %s: %v", clientIP, msg.Heartbeat)
+				timeout.Reset(ClientTimeout * time.Second)
+			default:
+				log.Printf("Received unsupported message type from %s", clientIP)
+			}
 		}
 	}
 }

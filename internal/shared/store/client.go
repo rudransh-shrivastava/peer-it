@@ -24,6 +24,6 @@ func (cs *ClientStore) GetClients() []schema.Peer {
 	return clients
 }
 
-func (cs *ClientStore) DeleteClient(ip string) {
-	cs.DB.Where("ip_address = ?", ip).Delete(&schema.Peer{})
+func (cs *ClientStore) DeleteClient(ip string, port string) {
+	cs.DB.Where("ip_address = ? AND port = ?", ip, port).Delete(&schema.Peer{})
 }

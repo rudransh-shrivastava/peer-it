@@ -6,6 +6,8 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
@@ -37,40 +39,46 @@ var rootCmd = &cobra.Command{
 
 		fmt.Println("Connected to", conn.RemoteAddr())
 
+		done := make(chan os.Signal, 1)
+		signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
+
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
 		for {
-			hb := &protocol.HeartbeatMessage{
-				Timestamp: time.Now().Unix(),
-			}
+			select {
+			case <-ticker.C:
+				hb := &protocol.HeartbeatMessage{
+					Timestamp: time.Now().Unix(),
+				}
 
-			netMsg := &protocol.NetworkMessage{
-				MessageType: &protocol.NetworkMessage_Heartbeat{
-					Heartbeat: hb,
-				},
-			}
+				netMsg := &protocol.NetworkMessage{
+					MessageType: &protocol.NetworkMessage_Heartbeat{
+						Heartbeat: hb,
+					},
+				}
 
-			data, err := proto.Marshal(netMsg)
-			if err != nil {
-				fmt.Println("Error marshalling message:", err)
+				data, err := proto.Marshal(netMsg)
+				if err != nil {
+					fmt.Println("Error marshalling message:", err)
+					return
+				}
+				msgLen := uint32(len(data))
+				if err := binary.Write(conn, binary.BigEndian, msgLen); err != nil {
+					log.Printf("Error sending message length: %v", err)
+					return
+				}
+
+				if _, err := conn.Write(data); err != nil {
+					log.Printf("Error sending message: %v", err)
+					return
+				}
+				time.Sleep(2 * time.Second)
+			case <-done:
+				fmt.Println("exiting...")
 				return
 			}
-
-			msgLen := uint32(len(data))
-			if err := binary.Write(conn, binary.BigEndian, msgLen); err != nil {
-				log.Printf("Error sending message length: %v", err)
-				return
-			}
-
-			if _, err := conn.Write(data); err != nil {
-				log.Printf("Error sending message: %v", err)
-				return
-			}
-			time.Sleep(2 * time.Second)
 		}
-		// done := make(chan os.Signal, 1)
-		// signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
 
-		// <-done
-		// fmt.Println("exiting...")
 	},
 }
 
