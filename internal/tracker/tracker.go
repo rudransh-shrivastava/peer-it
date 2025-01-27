@@ -109,6 +109,11 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 			case *protocol.NetworkMessage_Heartbeat:
 				log.Printf("Received heartbeat from %s: %v", remoteAddr, msg.Heartbeat)
 				timeout.Reset(ClientTimeout * time.Second)
+			case *protocol.NetworkMessage_Goodbye:
+				// Remove the client from db
+				t.PeerStore.DeletePeer(clientIP, clientPort)
+				log.Printf("Client %s disconnected", remoteAddr)
+				return
 			case *protocol.NetworkMessage_Announce:
 				log.Printf("Received announce from %s: %v", remoteAddr, msg.Announce)
 				files := msg.Announce.GetFiles()
@@ -143,8 +148,8 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 						}
 						log.Printf("File: %s, Size: %d, Chunks: %d Max Chunk Size: %d", file.GetFileHash(), file.GetFileSize(), file.GetTotalChunks(), file.GetChunkSize())
 					}
-					// TODO: add client to swarm of peers
-					// err = t.PeerStore.AddPeerToSwarm(clientIP, clientPort, file.GetFileHash())
+					// Add client to swarm of peers
+					err = t.PeerStore.AddPeerToSwarm(clientIP, clientPort, file.GetFileHash())
 				}
 			default:
 				log.Printf("Received unsupported message type from %s", remoteAddr)

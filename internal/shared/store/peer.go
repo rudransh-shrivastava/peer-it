@@ -21,3 +21,23 @@ func (cs *PeerStore) CreatePeer(ip string, port string) error {
 func (cs *PeerStore) DeletePeer(ip string, port string) error {
 	return cs.DB.Where("ip_address = ? AND port = ?", ip, port).Delete(&schema.Peer{}).Error
 }
+
+func (cs *PeerStore) AddPeerToSwarm(ip string, port string, fileHash string) error {
+	file := &schema.File{}
+	err := cs.DB.First(&file, "checksum = ?", fileHash).Error
+	if err != nil {
+		return err
+	}
+
+	peer := &schema.Peer{}
+	err = cs.DB.First(&peer, "ip_address = ? AND port = ?", ip, port).Error
+	if err != nil {
+		return err
+	}
+
+	swarm := &schema.Swarm{
+		File: *file,
+		Peer: *peer,
+	}
+	return cs.DB.Create(&swarm).Error
+}

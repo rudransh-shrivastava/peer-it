@@ -12,14 +12,14 @@ message NetworkMessage {
         ChunkRequest chunk_request = 4;
         ChunkResponse chunk_response = 5;
         HeartbeatMessage heartbeat = 6;
+        IntroductionMessage introduction = 7;
+        GoodbyeMessage goodbye = 8;
     }
 }
 
 message PeerInfo {
-    string peer_id = 1;
-    string ip_address = 2;
-    int32 port = 3;
-    int64 last_heartbeat = 4;
+    string ip_address = 1;
+    int32 port = 2;
 }
 
 message FileInfo {
@@ -61,6 +61,14 @@ message HeartbeatMessage {
     int64 timestamp = 1;
 }
 
-message GoodbyeMessage {
-    string peer_id = 1;
+// chunks_map: Vector of 0's and 1's signifying which chunks the peer has according to the index
+message IntroductionMessage {
+    string ip_address = 1;
+    int32 port = 2;
+    string file_hash = 3;
+    repeated int32 chunks_map = 4;
 }
+
+// No fields are required for this message
+// If recieved by anyone, delete that peer from the peer list
+message GoodbyeMessage {}

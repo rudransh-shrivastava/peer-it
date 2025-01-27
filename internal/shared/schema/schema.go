@@ -1,5 +1,6 @@
 package schema
 
+// Requires store
 type File struct {
 	ID           uint `gorm:"primaryKey"`
 	Size         int64
@@ -9,6 +10,7 @@ type File struct {
 	CreatedAt    int64
 }
 
+// Requires store
 type Chunk struct {
 	ID     uint `gorm:"primaryKey"`
 	Index  int
@@ -24,12 +26,14 @@ type ChunkMetadata struct {
 	ChunkCheckSum string
 }
 
+// Requires store
 type Peer struct {
 	ID        uint `gorm:"primaryKey"`
 	IPAddress string
 	Port      string
 }
 
+// Relation between peers and files
 type Swarm struct {
 	ID     uint `gorm:"primaryKey"`
 	PeerID uint `gorm:"not null;foreignKey:PeerID;constraint:OnDelete:CASCADE"`
