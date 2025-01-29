@@ -126,7 +126,11 @@ func (d *Daemon) handleCLIRequest(conn net.Conn) {
 	case *protocol.NetworkMessage_Announce:
 		// Transfer the announce message to the tracker
 		log.Printf("Received Announce message in the daemon: %+v", msg.Announce)
-		d.AnnounceFile(msg.Announce)
+		d.SendAnnounceMsg(msg.Announce)
+	case *protocol.NetworkMessage_PeerListRequest:
+		// Transfer the peer list request to the tracker
+		log.Printf("Received PeerListRequest message in the daemon: %+v", msg.PeerListRequest)
+		d.SendPeerListRequestMsg(msg.PeerListRequest)
 	}
 }
 
@@ -164,10 +168,19 @@ func (d *Daemon) listenTrackerMessages() {
 	}
 }
 
-func (d *Daemon) AnnounceFile(msg *protocol.AnnounceMessage) {
+func (d *Daemon) SendAnnounceMsg(msg *protocol.AnnounceMessage) {
 	netMsg := &protocol.NetworkMessage{
 		MessageType: &protocol.NetworkMessage_Announce{
 			Announce: msg,
+		},
+	}
+	d.sendMessage(netMsg)
+}
+
+func (d *Daemon) SendPeerListRequestMsg(msg *protocol.PeerListRequest) {
+	netMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_PeerListRequest{
+			PeerListRequest: msg,
 		},
 	}
 	d.sendMessage(netMsg)
