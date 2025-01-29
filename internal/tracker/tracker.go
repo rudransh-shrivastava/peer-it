@@ -121,7 +121,6 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 				for _, file := range files {
 					totalChunks := int(file.GetTotalChunks())
 					maxChunkSize := int(file.GetChunkSize())
-					lastChunkSize := int(file.GetFileSize() % int64(maxChunkSize))
 					schemaFile := &schema.File{
 						Size:         file.GetFileSize(),
 						MaxChunkSize: maxChunkSize,
@@ -137,15 +136,6 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 						// File already existed in db
 						log.Printf("File %+v already exists, adding client to swarm", schemaFile)
 					} else {
-						log.Printf("Attemping to create chunks")
-						for i := 0; i < totalChunks; i++ {
-							if i == totalChunks-1 {
-								// Create the last chunk without metadata
-								t.ChunkStore.CreateChunk(schemaFile, lastChunkSize, i, "any checksum", false)
-							}
-							// Create a full chunk without metadata
-							t.ChunkStore.CreateChunk(schemaFile, maxChunkSize, i, "any checksum", false)
-						}
 						log.Printf("File: %s, Size: %d, Chunks: %d Max Chunk Size: %d", file.GetFileHash(), file.GetFileSize(), file.GetTotalChunks(), file.GetChunkSize())
 					}
 					// Add client to swarm of peers

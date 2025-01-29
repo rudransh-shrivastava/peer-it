@@ -3,10 +3,12 @@ package cmd
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -38,6 +40,7 @@ var daemonCmd = &cobra.Command{
 
 type Daemon struct {
 	Conn      *net.TCPConn
+	ConnMutex *sync.Mutex
 	FileStore *store.FileStore
 	Ctx       context.Context
 }
@@ -57,6 +60,7 @@ func (d *Daemon) startDaemon() {
 	log.Println("Daemon starting...")
 
 	go d.connectToTracker()
+	go d.startIPCServer()
 
 	log.Println("Daemon ready")
 
@@ -66,6 +70,28 @@ func (d *Daemon) startDaemon() {
 	d.Conn.Close()
 
 	log.Println("Daemon stopped")
+}
+
+func (d *Daemon) startIPCServer() {
+	os.Remove("/tmp/pit-daemon.sock")
+	l, err := net.Listen("unix", "/tmp/pit-daemon.sock")
+	if err != nil {
+		panic(err)
+	}
+	log.Println("IPC Server started successfuly")
+	for {
+		conn, err := l.Accept()
+		log.Println("Accepted a new socket connection")
+		if err != nil {
+			continue
+		}
+		go d.handleCLIRequest(conn)
+	}
+}
+
+func (d *Daemon) handleCLIRequest(conn net.Conn) {
+	defer conn.Close()
+	fmt.Println("Handle the request here")
 }
 
 func (d *Daemon) connectToTracker() {
@@ -108,14 +134,8 @@ func (d *Daemon) connectToTracker() {
 }
 
 func (d *Daemon) handleConn() {
-	db, err := db.NewDB()
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-	fileStore := store.NewFileStore(db)
 	// Send an Announce message to the tracker the first time we connect
-	files, err := fileStore.GetFiles()
+	files, err := d.FileStore.GetFiles()
 	if err != nil {
 		log.Println("Error getting files:", err)
 		return

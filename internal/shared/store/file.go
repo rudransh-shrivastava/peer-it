@@ -16,13 +16,13 @@ func NewFileStore(db *gorm.DB) *FileStore {
 func (fs *FileStore) CreateFile(file *schema.File) (bool, error) {
 	_, err := fs.GetFileByChecksum(file.Checksum)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			fs.DB.Create(file)
-			return true, nil
+		// create the new record
+		if err := fs.DB.Create(file).Error; err != nil {
+			return false, err // db error
 		}
-		return false, err
+		return true, nil
 	}
-	return false, nil
+	return false, nil // already exists
 }
 
 func (fs *FileStore) GetFiles() ([]schema.File, error) {
@@ -36,8 +36,7 @@ func (fs *FileStore) GetFiles() ([]schema.File, error) {
 
 func (fs *FileStore) GetFileByChecksum(checksum string) (*schema.File, error) {
 	file := &schema.File{}
-	err := fs.DB.First(&file, "checksum = ?", checksum).Error
-	if err != nil {
+	if err := fs.DB.First(file, "checksum = ?", checksum).Error; err != nil {
 		return nil, err
 	}
 	return file, nil
