@@ -1,5 +1,6 @@
 CLIENT_BINARY_PATH = bin/client
 TRACKER_BINARY_PATH = bin/tracker
+DAEMON_BINARY_PATH= bin/client daemon
 PROTO_FILE = internal/shared/protocol/protocol.proto
 PROTO_GO = internal/shared/protocol/protocol.pb.go
 
@@ -22,6 +23,12 @@ client: protoc
 run-client: client
 		@echo "Running client..."
 		@./$(CLIENT_BINARY_PATH)
+
+# Daemon targets
+.PHONY: run-daemon
+run-daemon: client
+		@echo "Running daemon..."
+		@./$(DAEMON_BINARY_PATH)
 
 # Tracker targets
 .PHONY: tracker
