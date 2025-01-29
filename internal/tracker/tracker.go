@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
@@ -58,6 +59,25 @@ func (t *Tracker) Stop() {
 	if err != nil {
 		log.Println(err)
 	}
+}
+
+func (t *Tracker) sendMsg(conn net.Conn, msg *protocol.NetworkMessage) error {
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		log.Println("Error marshalling message:", err)
+		return err
+	}
+	msgLen := uint32(len(data))
+	if err := binary.Write(conn, binary.BigEndian, msgLen); err != nil {
+		log.Printf("Error sending message length: %v", err)
+		return err
+	}
+
+	if _, err := conn.Write(data); err != nil {
+		log.Printf("Error sending message: %v", err)
+		return err
+	}
+	return nil
 }
 
 func (t *Tracker) HandleConn(conn net.Conn) {
@@ -148,6 +168,42 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 					// Add client to swarm of peers
 					err = t.PeerStore.AddPeerToSwarm(clientIP, clientPort, file.GetFileHash())
 				}
+			case *protocol.NetworkMessage_PeerListRequest:
+				log.Printf("Received peer list request from %s: %v", remoteAddr, msg.PeerListRequest)
+				fileHash := msg.PeerListRequest.GetFileHash()
+
+				dbPeers, err := t.PeerStore.GetPeersByFileHash(fileHash)
+				if err != nil {
+					log.Printf("Error getting peers: %v", err)
+				}
+
+				peers := make([]*protocol.PeerInfo, 0)
+				for _, peer := range dbPeers {
+					port, err := strconv.Atoi(peer.Port)
+					int32port := int32(port)
+					if err != nil {
+						log.Printf("Error converting port to int: %v", err)
+						continue
+					}
+					peers = append(peers, &protocol.PeerInfo{
+						IpAddress: peer.IPAddress,
+						Port:      int32port,
+					})
+				}
+				peerListResponse := &protocol.PeerListResponse{
+					FileHash:    fileHash,
+					TotalChunks: 0,
+					ChunkSize:   0,
+					Peers:       peers,
+				}
+				netMsg := &protocol.NetworkMessage{
+					MessageType: &protocol.NetworkMessage_PeerListResponse{
+						PeerListResponse: peerListResponse,
+					},
+				}
+				log.Printf("Sending back the peers list to %s : %+v", remoteAddr, peerListResponse)
+				t.sendMsg(conn, netMsg)
+
 			default:
 				log.Printf("Received unsupported message type from %s", remoteAddr)
 			}

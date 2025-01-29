@@ -19,6 +19,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const remoteAddr = "localhost:8080"
+
 var daemonCmd = &cobra.Command{
 	Use:   "daemon",
 	Short: "runs peer-it daemon",
@@ -33,22 +35,29 @@ var daemonCmd = &cobra.Command{
 			return
 		}
 		fileStore := store.NewFileStore(db)
-		daemon := newDaemon(ctx, fileStore)
+
+		conn, err := net.Dial("tcp", remoteAddr)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+		daemon := newDaemon(ctx, conn, fileStore)
 		daemon.startDaemon()
 	},
 }
 
 type Daemon struct {
-	Conn      *net.TCPConn
-	ConnMutex sync.Mutex
-	FileStore *store.FileStore
-	Ctx       context.Context
+	Ctx              context.Context
+	TrackerConn      net.Conn
+	TrackerConnMutex sync.Mutex
+	FileStore        *store.FileStore
 }
 
-func newDaemon(ctx context.Context, fileStore *store.FileStore) *Daemon {
+func newDaemon(ctx context.Context, conn net.Conn, fileStore *store.FileStore) *Daemon {
 	return &Daemon{
-		FileStore: fileStore,
-		Ctx:       ctx,
+		Ctx:         ctx,
+		TrackerConn: conn,
+		FileStore:   fileStore,
 	}
 }
 
@@ -59,15 +68,17 @@ func (d *Daemon) startDaemon() {
 
 	log.Println("Daemon starting...")
 
-	go d.connectToTracker()
 	go d.startIPCServer()
+	go d.listenTrackerMessages()
+
+	d.initConnMsgs()
 
 	log.Println("Daemon ready")
 
 	<-sigChan
 	log.Println("Shutting down daemon...")
 
-	d.Conn.Close()
+	d.TrackerConn.Close()
 
 	log.Println("Daemon stopped")
 }
@@ -115,9 +126,41 @@ func (d *Daemon) handleCLIRequest(conn net.Conn) {
 	case *protocol.NetworkMessage_Announce:
 		// Transfer the announce message to the tracker
 		log.Printf("Received Announce message in the daemon: %+v", msg.Announce)
-		d.ConnMutex.Lock()
-		defer d.ConnMutex.Unlock()
 		d.AnnounceFile(msg.Announce)
+	}
+}
+
+func (d *Daemon) listenTrackerMessages() {
+	for {
+		select {
+		case <-d.Ctx.Done():
+			log.Println("Stopping the tracker message listener")
+			return
+		default:
+			var msgLen uint32
+			if err := binary.Read(d.TrackerConn, binary.BigEndian, &msgLen); err != nil {
+				if err != io.EOF {
+					log.Printf("Error reading message length: %v", err)
+				}
+				break
+			}
+			data := make([]byte, msgLen)
+			if _, err := io.ReadFull(d.TrackerConn, data); err != nil {
+				log.Printf("Error reading message body: %v", err)
+				break
+			}
+
+			var netMsg protocol.NetworkMessage
+			if err := proto.Unmarshal(data, &netMsg); err != nil {
+				log.Printf("Error unmarshaling message: %v", err)
+				continue
+			}
+
+			switch msg := netMsg.MessageType.(type) {
+			case *protocol.NetworkMessage_PeerListResponse:
+				log.Printf("Received peer list response: %+v", msg.PeerListResponse)
+			}
+		}
 	}
 }
 
@@ -137,58 +180,21 @@ func (d *Daemon) sendMessage(msg *protocol.NetworkMessage) error {
 		return err
 	}
 	msgLen := uint32(len(data))
-	if err := binary.Write(d.Conn, binary.BigEndian, msgLen); err != nil {
+	if err := binary.Write(d.TrackerConn, binary.BigEndian, msgLen); err != nil {
 		log.Printf("Error sending message length: %v", err)
 		return err
 	}
 
-	if _, err := d.Conn.Write(data); err != nil {
+	d.TrackerConnMutex.Lock()
+	defer d.TrackerConnMutex.Unlock()
+	if _, err := d.TrackerConn.Write(data); err != nil {
 		log.Printf("Error sending message: %v", err)
 		return err
 	}
 	return nil
 }
 
-func (d *Daemon) connectToTracker() {
-	for {
-		select {
-		case <-d.Ctx.Done():
-			log.Println("Disconnecting from tracker")
-			return
-		default:
-			remoteAddr := "localhost:8080"
-			raddr, err := net.ResolveTCPAddr("tcp", remoteAddr)
-			if err != nil {
-				log.Println("Error resolving remote address:", err)
-				os.Exit(0)
-			}
-			laddr := &net.TCPAddr{
-				IP:   net.ParseIP("0.0.0.0"),
-				Port: 0,
-			}
-
-			conn, err := net.DialTCP("tcp", laddr, raddr)
-			if err != nil {
-				log.Println("Error dialing:", err)
-				log.Println("Reconnecting in 10 seconds...")
-				select {
-				case <-time.After(10 * time.Second):
-					continue
-				case <-d.Ctx.Done():
-					log.Println("Disconnecting from tracker")
-					return
-				}
-			}
-			d.Conn = conn
-
-			log.Println("Connected to", conn.RemoteAddr())
-			d.handleConn()
-			return
-		}
-	}
-}
-
-func (d *Daemon) handleConn() {
+func (d *Daemon) initConnMsgs() {
 	// Send an Announce message to the tracker the first time we connect
 	files, err := d.FileStore.GetFiles()
 	if err != nil {
@@ -218,13 +224,15 @@ func (d *Daemon) handleConn() {
 		log.Println("Error marshalling message:", err)
 		return
 	}
+	d.TrackerConnMutex.Lock()
+	defer d.TrackerConnMutex.Unlock()
 	msgLen := uint32(len(data))
-	if err := binary.Write(d.Conn, binary.BigEndian, msgLen); err != nil {
+	if err := binary.Write(d.TrackerConn, binary.BigEndian, msgLen); err != nil {
 		log.Printf("Error sending message length: %v", err)
 		return
 	}
 
-	if _, err := d.Conn.Write(data); err != nil {
+	if _, err := d.TrackerConn.Write(data); err != nil {
 		log.Printf("Error sending message: %v", err)
 		return
 	}
@@ -243,6 +251,10 @@ func (d *Daemon) sendHeartBeats() {
 			log.Println("Stopping the heart")
 			return
 		case <-ticker.C:
+			if d.TrackerConn == nil {
+				return
+			}
+
 			log.Println("Sending a heartbeat")
 			hb := &protocol.HeartbeatMessage{
 				Timestamp: time.Now().Unix(),
@@ -253,20 +265,9 @@ func (d *Daemon) sendHeartBeats() {
 					Heartbeat: hb,
 				},
 			}
-
-			data, err := proto.Marshal(netMsg)
+			err := d.sendMessage(netMsg)
 			if err != nil {
-				log.Println("Error marshalling message:", err)
-				return
-			}
-			msgLen := uint32(len(data))
-			if err := binary.Write(d.Conn, binary.BigEndian, msgLen); err != nil {
-				log.Printf("Error sending message length: %v", err)
-				return
-			}
-
-			if _, err := d.Conn.Write(data); err != nil {
-				log.Printf("Error sending message: %v", err)
+				log.Println("Error sending heartbeat:", err)
 				return
 			}
 		}

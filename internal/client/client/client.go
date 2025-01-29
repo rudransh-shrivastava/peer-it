@@ -33,6 +33,17 @@ func (c *Client) AnnounceFile(msg *protocol.AnnounceMessage) {
 	c.sendMessage(netMsg)
 }
 
+func (c *Client) RequestPeerList(msg *protocol.PeerListRequest) {
+	log.Printf("Requesting peer list for hash: %s", msg.GetFileHash())
+
+	netMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_PeerListRequest{
+			PeerListRequest: msg,
+		},
+	}
+	c.sendMessage(netMsg)
+}
+
 func (c *Client) sendMessage(msg *protocol.NetworkMessage) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {

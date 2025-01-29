@@ -45,3 +45,12 @@ func (ps *PeerStore) AddPeerToSwarm(ip string, port string, fileHash string) err
 func (ps *PeerStore) DropAllPeers() error {
 	return ps.DB.Exec("DELETE FROM peers").Error
 }
+
+func (ps *PeerStore) GetPeersByFileHash(fileHash string) ([]schema.Peer, error) {
+	peers := []schema.Peer{}
+	err := ps.DB.Raw("SELECT * FROM peers WHERE id IN (SELECT peer_id FROM swarms WHERE file_id IN (SELECT id FROM files WHERE checksum = ?))", fileHash).Scan(&peers).Error
+	if err != nil {
+		return nil, err
+	}
+	return peers, nil
+}
