@@ -13,24 +13,24 @@ func NewPeerStore(db *gorm.DB) *PeerStore {
 	return &PeerStore{DB: db}
 }
 
-func (cs *PeerStore) CreatePeer(ip string, port string) error {
+func (ps *PeerStore) CreatePeer(ip string, port string) error {
 	peer := schema.Peer{IPAddress: ip, Port: port}
-	return cs.DB.Create(&peer).Error
+	return ps.DB.Create(&peer).Error
 }
 
-func (cs *PeerStore) DeletePeer(ip string, port string) error {
-	return cs.DB.Where("ip_address = ? AND port = ?", ip, port).Delete(&schema.Peer{}).Error
+func (ps *PeerStore) DeletePeer(ip string, port string) error {
+	return ps.DB.Where("ip_address = ? AND port = ?", ip, port).Delete(&schema.Peer{}).Error
 }
 
-func (cs *PeerStore) AddPeerToSwarm(ip string, port string, fileHash string) error {
+func (ps *PeerStore) AddPeerToSwarm(ip string, port string, fileHash string) error {
 	file := &schema.File{}
-	err := cs.DB.First(&file, "checksum = ?", fileHash).Error
+	err := ps.DB.First(&file, "checksum = ?", fileHash).Error
 	if err != nil {
 		return err
 	}
 
 	peer := &schema.Peer{}
-	err = cs.DB.First(&peer, "ip_address = ? AND port = ?", ip, port).Error
+	err = ps.DB.First(&peer, "ip_address = ? AND port = ?", ip, port).Error
 	if err != nil {
 		return err
 	}
@@ -39,5 +39,9 @@ func (cs *PeerStore) AddPeerToSwarm(ip string, port string, fileHash string) err
 		File: *file,
 		Peer: *peer,
 	}
-	return cs.DB.Create(&swarm).Error
+	return ps.DB.Create(&swarm).Error
+}
+
+func (ps *PeerStore) DropAllPeers() error {
+	return ps.DB.Exec("DELETE FROM peers").Error
 }

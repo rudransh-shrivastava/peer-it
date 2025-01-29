@@ -52,6 +52,14 @@ func (t *Tracker) Start() {
 	}
 }
 
+func (t *Tracker) Stop() {
+	// cleanup peers
+	err := t.PeerStore.DropAllPeers()
+	if err != nil {
+		log.Println(err)
+	}
+}
+
 func (t *Tracker) HandleConn(conn net.Conn) {
 	defer conn.Close()
 
@@ -91,7 +99,6 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 				}
 				break
 			}
-
 			data := make([]byte, msgLen)
 			if _, err := io.ReadFull(conn, data); err != nil {
 				log.Printf("Error reading message body: %v", err)
