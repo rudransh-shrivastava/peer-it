@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -40,7 +40,7 @@ var daemonCmd = &cobra.Command{
 
 type Daemon struct {
 	Conn      *net.TCPConn
-	ConnMutex *sync.Mutex
+	ConnMutex sync.Mutex
 	FileStore *store.FileStore
 	Ctx       context.Context
 }
@@ -91,7 +91,62 @@ func (d *Daemon) startIPCServer() {
 
 func (d *Daemon) handleCLIRequest(conn net.Conn) {
 	defer conn.Close()
-	fmt.Println("Handle the request here")
+	var msgLen uint32
+	if err := binary.Read(conn, binary.BigEndian, &msgLen); err != nil {
+		if err != io.EOF {
+			log.Printf("Error reading message length: %v", err)
+		}
+	}
+
+	data := make([]byte, msgLen)
+	if _, err := io.ReadFull(conn, data); err != nil {
+		log.Printf("Error reading message body: %v", err)
+	}
+
+	var netMsg protocol.NetworkMessage
+	if err := proto.Unmarshal(data, &netMsg); err != nil {
+		log.Printf("Error unmarshaling message: %v", err)
+	}
+
+	// see tracker to understand how its done
+	// if i forget how to do it
+
+	switch msg := netMsg.MessageType.(type) {
+	case *protocol.NetworkMessage_Announce:
+		// Transfer the announce message to the tracker
+		log.Printf("Received Announce message in the daemon: %+v", msg.Announce)
+		d.ConnMutex.Lock()
+		defer d.ConnMutex.Unlock()
+		d.AnnounceFile(msg.Announce)
+	}
+}
+
+func (d *Daemon) AnnounceFile(msg *protocol.AnnounceMessage) {
+	netMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_Announce{
+			Announce: msg,
+		},
+	}
+	d.sendMessage(netMsg)
+}
+
+func (d *Daemon) sendMessage(msg *protocol.NetworkMessage) error {
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		log.Println("Error marshalling message:", err)
+		return err
+	}
+	msgLen := uint32(len(data))
+	if err := binary.Write(d.Conn, binary.BigEndian, msgLen); err != nil {
+		log.Printf("Error sending message length: %v", err)
+		return err
+	}
+
+	if _, err := d.Conn.Write(data); err != nil {
+		log.Printf("Error sending message: %v", err)
+		return err
+	}
+	return nil
 }
 
 func (d *Daemon) connectToTracker() {
