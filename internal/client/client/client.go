@@ -52,17 +52,3 @@ func (c *Client) WaitForPeerList() *protocol.PeerListResponse {
 	peerListResponse := netMsg.GetPeerListResponse()
 	return peerListResponse
 }
-
-func (c *Client) RequestPeerList(msg *protocol.PeerListRequest) {
-	log.Printf("Requesting peer list for hash: %s", msg.GetFileHash())
-
-	netMsg := &protocol.NetworkMessage{
-		MessageType: &protocol.NetworkMessage_PeerListRequest{
-			PeerListRequest: msg,
-		},
-	}
-	err := utils.SendNetMsg(c.DaemonConn, netMsg)
-	if err != nil {
-		log.Fatal(err)
-	}
-}

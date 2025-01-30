@@ -5,6 +5,7 @@ import (
 
 	"github.com/rudransh-shrivastava/peer-it/internal/client/client"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +24,11 @@ var downloadCmd = &cobra.Command{
 		peerListReqMsg := protocol.PeerListRequest{
 			FileHash: fileHash,
 		}
-		client.RequestPeerList(&peerListReqMsg)
+		err = utils.SendPeerListRequestMsg(client.DaemonConn, &peerListReqMsg)
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		client.WaitForPeerList()
 		log.Printf("Done waiting... now send the damn connection to the peers")
 	},

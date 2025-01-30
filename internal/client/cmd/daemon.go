@@ -123,7 +123,10 @@ func (d *Daemon) handleCLIRequest(conn net.Conn) {
 		log.Printf("Received PeerListRequest message from CLI: %+v", msg.PeerListRequest)
 		d.PendingRequests[msg.PeerListRequest.GetFileHash()] = conn
 		log.Printf("Sending PeerListRequest message to Tracker: %+v", msg.PeerListRequest)
-		d.SendPeerListRequestMsg(msg.PeerListRequest) // TODO
+
+		d.TrackerConnMutex.Lock()
+		utils.SendPeerListRequestMsg(d.TrackerConn, msg.PeerListRequest)
+		d.TrackerConnMutex.Unlock()
 	}
 }
 
@@ -152,20 +155,6 @@ func (d *Daemon) listenTrackerMessages() {
 			}
 		}
 	}
-}
-
-func (d *Daemon) SendPeerListRequestMsg(msg *protocol.PeerListRequest) {
-	netMsg := &protocol.NetworkMessage{
-		MessageType: &protocol.NetworkMessage_PeerListRequest{
-			PeerListRequest: msg,
-		},
-	}
-	d.TrackerConnMutex.Lock()
-	err := utils.SendNetMsg(d.TrackerConn, netMsg)
-	if err != nil {
-		log.Fatal(err)
-	}
-	d.TrackerConnMutex.Unlock()
 }
 
 func (d *Daemon) initConnMsgs() {

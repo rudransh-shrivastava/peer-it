@@ -24,6 +24,22 @@ func SendAnnounceMsg(conn net.Conn, msg *protocol.AnnounceMessage) error {
 	return nil
 }
 
+func SendPeerListRequestMsg(conn net.Conn, msg *protocol.PeerListRequest) error {
+	log.Printf("Requesting peer list for hash: %s", msg.GetFileHash())
+
+	netMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_PeerListRequest{
+			PeerListRequest: msg,
+		},
+	}
+	err := SendNetMsg(conn, netMsg)
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	return nil
+}
+
 // SendNetMsg takes in a connection and a network message
 // and sends the network message over the connection
 func SendNetMsg(conn net.Conn, msg *protocol.NetworkMessage) error {
