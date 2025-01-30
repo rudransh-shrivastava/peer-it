@@ -1,6 +1,6 @@
 package schema
 
-// Requires store
+// Requires file store
 type File struct {
 	ID           uint `gorm:"primaryKey"`
 	Size         int64
@@ -10,7 +10,7 @@ type File struct {
 	CreatedAt    int64
 }
 
-// Requires store
+// Requires chunk store
 type Chunk struct {
 	ID     uint `gorm:"primaryKey"`
 	Index  int
@@ -26,7 +26,7 @@ type ChunkMetadata struct {
 	ChunkCheckSum string
 }
 
-// Requires store
+// Requires peer store
 type Peer struct {
 	ID        uint `gorm:"primaryKey"`
 	IPAddress string

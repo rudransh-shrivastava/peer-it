@@ -11,6 +11,7 @@ import (
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -48,8 +49,8 @@ func (t *Tracker) Start() {
 			log.Println("Error accepting connection:", err)
 			continue
 		}
-		// Handle connection
-		go t.HandleConn(conn)
+		// Listen for incoming msgs
+		go t.ListenConnMsgs(conn)
 	}
 }
 
@@ -61,26 +62,7 @@ func (t *Tracker) Stop() {
 	}
 }
 
-func (t *Tracker) sendMsg(conn net.Conn, msg *protocol.NetworkMessage) error {
-	data, err := proto.Marshal(msg)
-	if err != nil {
-		log.Println("Error marshalling message:", err)
-		return err
-	}
-	msgLen := uint32(len(data))
-	if err := binary.Write(conn, binary.BigEndian, msgLen); err != nil {
-		log.Printf("Error sending message length: %v", err)
-		return err
-	}
-
-	if _, err := conn.Write(data); err != nil {
-		log.Printf("Error sending message: %v", err)
-		return err
-	}
-	return nil
-}
-
-func (t *Tracker) HandleConn(conn net.Conn) {
+func (t *Tracker) ListenConnMsgs(conn net.Conn) {
 	defer conn.Close()
 
 	remoteAddr := conn.RemoteAddr().String()
@@ -202,10 +184,13 @@ func (t *Tracker) HandleConn(conn net.Conn) {
 					},
 				}
 				log.Printf("Sending back the peers list to %s : %+v", remoteAddr, peerListResponse)
-				t.sendMsg(conn, netMsg)
+				err = utils.SendNetMsg(conn, netMsg)
+				if err != nil {
+					log.Printf("Error sending peer list response: %v", err)
+				}
 
 			default:
-				log.Printf("Received unsupported message type from %s", remoteAddr)
+				log.Printf("Received unsupported message type %+v from %s", netMsg.MessageType, remoteAddr)
 			}
 		}
 	}

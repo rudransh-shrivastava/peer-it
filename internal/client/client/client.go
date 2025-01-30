@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
 	"google.golang.org/protobuf/proto"
 )
 
 // This client communicates with the daemon using unix sockets
-
 type Client struct {
-	Conn net.Conn
+	DaemonConn net.Conn
 }
 
 func NewClient() (*Client, error) {
@@ -23,7 +23,7 @@ func NewClient() (*Client, error) {
 		log.Fatal(err)
 		return &Client{}, err
 	}
-	return &Client{Conn: conn}, nil
+	return &Client{DaemonConn: conn}, nil
 }
 
 func (c *Client) AnnounceFile(msg *protocol.AnnounceMessage) {
@@ -32,7 +32,10 @@ func (c *Client) AnnounceFile(msg *protocol.AnnounceMessage) {
 			Announce: msg,
 		},
 	}
-	c.sendMessage(netMsg)
+	err := utils.SendNetMsg(c.DaemonConn, netMsg)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func (c *Client) WaitForPeerList() *protocol.PeerListResponse {
@@ -49,15 +52,15 @@ func (c *Client) WaitForPeerList() *protocol.PeerListResponse {
 
 func (c *Client) receiveMsg() *protocol.NetworkMessage {
 	// set deadline
-	c.Conn.SetReadDeadline(time.Now().Add(time.Second * 10))
+	c.DaemonConn.SetReadDeadline(time.Now().Add(time.Second * 10))
 	var msgLen uint32
-	if err := binary.Read(c.Conn, binary.BigEndian, &msgLen); err != nil {
+	if err := binary.Read(c.DaemonConn, binary.BigEndian, &msgLen); err != nil {
 		if err != io.EOF {
 			log.Printf("Error reading message length: %v", err)
 		}
 	}
 	data := make([]byte, msgLen)
-	if _, err := io.ReadFull(c.Conn, data); err != nil {
+	if _, err := io.ReadFull(c.DaemonConn, data); err != nil {
 		log.Printf("Error reading message body: %v", err)
 	}
 
@@ -67,6 +70,7 @@ func (c *Client) receiveMsg() *protocol.NetworkMessage {
 	}
 	return &netMsg
 }
+
 func (c *Client) RequestPeerList(msg *protocol.PeerListRequest) {
 	log.Printf("Requesting peer list for hash: %s", msg.GetFileHash())
 
@@ -75,24 +79,8 @@ func (c *Client) RequestPeerList(msg *protocol.PeerListRequest) {
 			PeerListRequest: msg,
 		},
 	}
-	c.sendMessage(netMsg)
-}
-
-func (c *Client) sendMessage(msg *protocol.NetworkMessage) error {
-	data, err := proto.Marshal(msg)
+	err := utils.SendNetMsg(c.DaemonConn, netMsg)
 	if err != nil {
-		log.Println("Error marshalling message:", err)
-		return err
+		log.Fatal(err)
 	}
-	msgLen := uint32(len(data))
-	if err := binary.Write(c.Conn, binary.BigEndian, msgLen); err != nil {
-		log.Printf("Error sending message length: %v", err)
-		return err
-	}
-
-	if _, err := c.Conn.Write(data); err != nil {
-		log.Printf("Error sending message: %v", err)
-		return err
-	}
-	return nil
 }

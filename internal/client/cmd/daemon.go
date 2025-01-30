@@ -15,11 +15,20 @@ import (
 	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 )
 
 const remoteAddr = "localhost:8080"
+
+type Daemon struct {
+	Ctx              context.Context
+	TrackerConn      net.Conn
+	TrackerConnMutex sync.Mutex
+	FileStore        *store.FileStore
+	PendingRequests  map[string]net.Conn
+}
 
 var daemonCmd = &cobra.Command{
 	Use:   "daemon",
@@ -44,14 +53,6 @@ var daemonCmd = &cobra.Command{
 		daemon := newDaemon(ctx, conn, fileStore)
 		daemon.startDaemon()
 	},
-}
-
-type Daemon struct {
-	Ctx              context.Context
-	TrackerConn      net.Conn
-	TrackerConnMutex sync.Mutex
-	FileStore        *store.FileStore
-	PendingRequests  map[string]net.Conn
 }
 
 func newDaemon(ctx context.Context, conn net.Conn, fileStore *store.FileStore) *Daemon {
@@ -165,23 +166,15 @@ func (d *Daemon) listenTrackerMessages() {
 			switch msg := netMsg.MessageType.(type) {
 			case *protocol.NetworkMessage_PeerListResponse:
 				log.Printf("Received peer list response from tracker: %+v", msg.PeerListResponse)
-				conn, exists := d.PendingRequests[msg.PeerListResponse.GetFileHash()]
+				cliConn, exists := d.PendingRequests[msg.PeerListResponse.GetFileHash()]
 				if !exists {
 					log.Printf("No Requests for file hash: %s", msg.PeerListResponse.GetFileHash())
 				}
 				delete(d.PendingRequests, msg.PeerListResponse.GetFileHash())
 
-				data, err := proto.Marshal(&netMsg)
+				err := utils.SendNetMsg(cliConn, &netMsg)
 				if err != nil {
-					log.Println("Error marshalling message:", err)
-				}
-				msgLen := uint32(len(data))
-				if err := binary.Write(conn, binary.BigEndian, msgLen); err != nil {
-					log.Printf("Error sending message length: %v", err)
-				}
-
-				if _, err := conn.Write(data); err != nil {
-					log.Printf("Error sending message: %v", err)
+					log.Fatal(err)
 				}
 				log.Printf("Sent peer list response to CLI")
 			}
@@ -195,7 +188,12 @@ func (d *Daemon) SendAnnounceMsg(msg *protocol.AnnounceMessage) {
 			Announce: msg,
 		},
 	}
-	d.sendMessage(netMsg)
+	d.TrackerConnMutex.Lock()
+	err := utils.SendNetMsg(d.TrackerConn, netMsg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	d.TrackerConnMutex.Unlock()
 }
 
 func (d *Daemon) SendPeerListRequestMsg(msg *protocol.PeerListRequest) {
@@ -204,28 +202,12 @@ func (d *Daemon) SendPeerListRequestMsg(msg *protocol.PeerListRequest) {
 			PeerListRequest: msg,
 		},
 	}
-	d.sendMessage(netMsg)
-}
-
-func (d *Daemon) sendMessage(msg *protocol.NetworkMessage) error {
-	data, err := proto.Marshal(msg)
-	if err != nil {
-		log.Println("Error marshalling message:", err)
-		return err
-	}
-	msgLen := uint32(len(data))
-	if err := binary.Write(d.TrackerConn, binary.BigEndian, msgLen); err != nil {
-		log.Printf("Error sending message length: %v", err)
-		return err
-	}
-
 	d.TrackerConnMutex.Lock()
-	defer d.TrackerConnMutex.Unlock()
-	if _, err := d.TrackerConn.Write(data); err != nil {
-		log.Printf("Error sending message: %v", err)
-		return err
+	err := utils.SendNetMsg(d.TrackerConn, netMsg)
+	if err != nil {
+		log.Fatal(err)
 	}
-	return nil
+	d.TrackerConnMutex.Unlock()
 }
 
 func (d *Daemon) initConnMsgs() {
@@ -244,7 +226,6 @@ func (d *Daemon) initConnMsgs() {
 			TotalChunks: int32(file.TotalChunks),
 		})
 	}
-	log.Printf("Preparing to send announce to tracker with files: %+v", fileInfoMsgs)
 	announceMsg := &protocol.AnnounceMessage{
 		Files: fileInfoMsgs,
 	}
@@ -253,23 +234,14 @@ func (d *Daemon) initConnMsgs() {
 			Announce: announceMsg,
 		},
 	}
-	data, err := proto.Marshal(netMsg)
-	if err != nil {
-		log.Println("Error marshalling message:", err)
-		return
-	}
-	d.TrackerConnMutex.Lock()
-	defer d.TrackerConnMutex.Unlock()
-	msgLen := uint32(len(data))
-	if err := binary.Write(d.TrackerConn, binary.BigEndian, msgLen); err != nil {
-		log.Printf("Error sending message length: %v", err)
-		return
-	}
 
-	if _, err := d.TrackerConn.Write(data); err != nil {
-		log.Printf("Error sending message: %v", err)
-		return
+	d.TrackerConnMutex.Lock()
+	err = utils.SendNetMsg(d.TrackerConn, netMsg)
+	if err != nil {
+		log.Fatal(err)
 	}
+	d.TrackerConnMutex.Unlock()
+
 	log.Printf("Sent announce to tracker: %+v", announceMsg)
 	// Send heartbeats every n seconds
 	go d.sendHeartBeats()
@@ -299,11 +271,13 @@ func (d *Daemon) sendHeartBeats() {
 					Heartbeat: hb,
 				},
 			}
-			err := d.sendMessage(netMsg)
+
+			d.TrackerConnMutex.Lock()
+			err := utils.SendNetMsg(d.TrackerConn, netMsg)
 			if err != nil {
-				log.Println("Error sending heartbeat:", err)
-				return
+				log.Fatal("Error sending heartbeat:", err)
 			}
+			d.TrackerConnMutex.Unlock()
 		}
 	}
 }
