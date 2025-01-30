@@ -10,10 +10,8 @@ import (
 	"time"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/client/client"
-	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
-	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
 	"github.com/spf13/cobra"
 )
 
@@ -26,6 +24,11 @@ var registerCmd = &cobra.Command{
 	Long:  `registers a file to the tracker server to make it available for download by other peers.`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		client, err := client.NewClient()
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
 		filePath := args[0]
 
 		file, err := os.Open(filePath)
@@ -34,12 +37,6 @@ var registerCmd = &cobra.Command{
 			return
 		}
 		defer file.Close()
-
-		db, err := db.NewDB()
-		if err != nil {
-			log.Fatal(err)
-			return
-		}
 
 		fileName := strings.Split(file.Name(), "/")[len(strings.Split(file.Name(), "/"))-1]
 		fileInfo, err := file.Stat()
@@ -55,7 +52,6 @@ var registerCmd = &cobra.Command{
 			return
 		}
 		fileChecksum := fmt.Sprintf("%x", fileHash.Sum(nil))
-		fileStore := store.NewFileStore(db)
 
 		schemaFile := schema.File{
 			Size:         fileSize,
@@ -66,7 +62,7 @@ var registerCmd = &cobra.Command{
 		}
 		// log the stats of the file
 		log.Printf("file: %s with size %d and checksum %s\n", fileName, fileSize, fileChecksum)
-		created, err := fileStore.CreateFile(&schemaFile)
+		created, err := client.FileStore.CreateFile(&schemaFile)
 		if !created {
 			log.Println("file already exists")
 			return
@@ -77,7 +73,6 @@ var registerCmd = &cobra.Command{
 		}
 
 		log.Printf("Attempting to create chunks with metadata...")
-		chunkStore := store.NewChunkStore(db)
 
 		buffer := make([]byte, maxChunkSize)
 		chunkIndex := 0
@@ -93,7 +88,7 @@ var registerCmd = &cobra.Command{
 			}
 
 			checksum := generateChecksum(buffer[:n])
-			err = chunkStore.CreateChunk(&schemaFile, n, chunkIndex, checksum, false)
+			err = client.ChunkStore.CreateChunk(&schemaFile, n, chunkIndex, checksum, false)
 			if err != nil {
 				log.Fatal(err)
 				return
@@ -129,11 +124,6 @@ var registerCmd = &cobra.Command{
 
 		announceMsg := &protocol.AnnounceMessage{
 			Files: fileInfoMsgs,
-		}
-		client, err := client.NewClient()
-		if err != nil {
-			log.Fatal(err)
-			return
 		}
 
 		client.AnnounceFile(announceMsg)

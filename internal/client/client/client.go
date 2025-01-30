@@ -4,22 +4,41 @@ import (
 	"log"
 	"net"
 
+	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
 )
 
 // This client communicates with the daemon using unix sockets
 type Client struct {
 	DaemonConn net.Conn
+
+	FileStore  *store.FileStore
+	ChunkStore *store.ChunkStore
 }
 
 func NewClient() (*Client, error) {
+	db, err := db.NewDB()
+	if err != nil {
+		log.Fatal(err)
+		return &Client{}, err
+	}
+
+	fileStore := store.NewFileStore(db)
+	chunkStore := store.NewChunkStore(db)
+
 	conn, err := net.Dial("unix", "/tmp/pit-daemon.sock")
 	if err != nil {
 		log.Fatal(err)
 		return &Client{}, err
 	}
-	return &Client{DaemonConn: conn}, nil
+
+	return &Client{
+		DaemonConn: conn,
+		FileStore:  fileStore,
+		ChunkStore: chunkStore,
+	}, nil
 }
 
 func (c *Client) AnnounceFile(msg *protocol.AnnounceMessage) {

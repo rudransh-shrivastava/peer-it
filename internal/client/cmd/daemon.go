@@ -20,11 +20,14 @@ import (
 const remoteAddr = "localhost:8080"
 
 type Daemon struct {
-	Ctx              context.Context
+	Ctx context.Context
+
 	TrackerConn      net.Conn
 	TrackerConnMutex sync.Mutex
-	FileStore        *store.FileStore
-	PendingRequests  map[string]net.Conn
+
+	FileStore *store.FileStore
+
+	PendingRequests map[string]net.Conn
 }
 
 func newDaemon(ctx context.Context, conn net.Conn, fileStore *store.FileStore) *Daemon {
