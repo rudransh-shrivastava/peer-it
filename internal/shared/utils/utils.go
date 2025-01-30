@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/binary"
+	"io"
 	"log"
 	"net"
 
@@ -28,4 +29,23 @@ func SendNetMsg(conn net.Conn, msg *protocol.NetworkMessage) error {
 		return err
 	}
 	return nil
+}
+
+func ReceiveNetMsg(conn net.Conn) *protocol.NetworkMessage {
+	var msgLen uint32
+	if err := binary.Read(conn, binary.BigEndian, &msgLen); err != nil {
+		if err != io.EOF {
+			log.Printf("Error reading message length: %v", err)
+		}
+	}
+	data := make([]byte, msgLen)
+	if _, err := io.ReadFull(conn, data); err != nil {
+		log.Printf("Error reading message body: %v", err)
+	}
+
+	var netMsg protocol.NetworkMessage
+	if err := proto.Unmarshal(data, &netMsg); err != nil {
+		log.Printf("Error unmarshaling message: %v", err)
+	}
+	return &netMsg
 }

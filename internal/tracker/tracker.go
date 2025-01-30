@@ -1,8 +1,6 @@
 package tracker
 
 import (
-	"encoding/binary"
-	"io"
 	"log"
 	"net"
 	"strconv"
@@ -12,7 +10,6 @@ import (
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
-	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -50,7 +47,7 @@ func (t *Tracker) Start() {
 			continue
 		}
 		// Listen for incoming msgs
-		go t.ListenConnMsgs(conn)
+		go t.ListenCLIConnMsgs(conn)
 	}
 }
 
@@ -62,10 +59,10 @@ func (t *Tracker) Stop() {
 	}
 }
 
-func (t *Tracker) ListenConnMsgs(conn net.Conn) {
-	defer conn.Close()
+func (t *Tracker) ListenCLIConnMsgs(cliConn net.Conn) {
+	defer cliConn.Close()
 
-	remoteAddr := conn.RemoteAddr().String()
+	remoteAddr := cliConn.RemoteAddr().String()
 	clientIP, clientPort, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
 		log.Fatal(err)
@@ -94,24 +91,7 @@ func (t *Tracker) ListenConnMsgs(conn net.Conn) {
 			}
 			return
 		default:
-			var msgLen uint32
-			if err := binary.Read(conn, binary.BigEndian, &msgLen); err != nil {
-				if err != io.EOF {
-					log.Printf("Error reading message length: %v", err)
-				}
-				break
-			}
-			data := make([]byte, msgLen)
-			if _, err := io.ReadFull(conn, data); err != nil {
-				log.Printf("Error reading message body: %v", err)
-				break
-			}
-
-			var netMsg protocol.NetworkMessage
-			if err := proto.Unmarshal(data, &netMsg); err != nil {
-				log.Printf("Error unmarshaling message: %v", err)
-				continue
-			}
+			netMsg := utils.ReceiveNetMsg(cliConn)
 
 			switch msg := netMsg.MessageType.(type) {
 			// Reset the timer if the message is a heartbeat
@@ -184,7 +164,7 @@ func (t *Tracker) ListenConnMsgs(conn net.Conn) {
 					},
 				}
 				log.Printf("Sending back the peers list to %s : %+v", remoteAddr, peerListResponse)
-				err = utils.SendNetMsg(conn, netMsg)
+				err = utils.SendNetMsg(cliConn, netMsg)
 				if err != nil {
 					log.Printf("Error sending peer list response: %v", err)
 				}

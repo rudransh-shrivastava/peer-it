@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/binary"
-	"io"
 	"log"
 	"net"
 	"os"
@@ -17,7 +15,6 @@ import (
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/proto"
 )
 
 const remoteAddr = "localhost:8080"
@@ -28,6 +25,15 @@ type Daemon struct {
 	TrackerConnMutex sync.Mutex
 	FileStore        *store.FileStore
 	PendingRequests  map[string]net.Conn
+}
+
+func newDaemon(ctx context.Context, conn net.Conn, fileStore *store.FileStore) *Daemon {
+	return &Daemon{
+		Ctx:             ctx,
+		TrackerConn:     conn,
+		FileStore:       fileStore,
+		PendingRequests: make(map[string]net.Conn),
+	}
 }
 
 var daemonCmd = &cobra.Command{
@@ -53,15 +59,6 @@ var daemonCmd = &cobra.Command{
 		daemon := newDaemon(ctx, conn, fileStore)
 		daemon.startDaemon()
 	},
-}
-
-func newDaemon(ctx context.Context, conn net.Conn, fileStore *store.FileStore) *Daemon {
-	return &Daemon{
-		Ctx:             ctx,
-		TrackerConn:     conn,
-		FileStore:       fileStore,
-		PendingRequests: make(map[string]net.Conn),
-	}
 }
 
 func (d *Daemon) startDaemon() {
@@ -94,36 +91,17 @@ func (d *Daemon) startIPCServer() {
 	}
 	log.Println("IPC Server started successfuly")
 	for {
-		conn, err := l.Accept()
+		cliConn, err := l.Accept()
 		log.Println("Accepted a new socket connection")
 		if err != nil {
 			continue
 		}
-		go d.handleCLIRequest(conn)
+		go d.handleCLIRequest(cliConn)
 	}
 }
 
 func (d *Daemon) handleCLIRequest(conn net.Conn) {
-	var msgLen uint32
-	if err := binary.Read(conn, binary.BigEndian, &msgLen); err != nil {
-		if err != io.EOF {
-			log.Printf("Error reading message length: %v", err)
-		}
-	}
-
-	data := make([]byte, msgLen)
-	if _, err := io.ReadFull(conn, data); err != nil {
-		log.Printf("Error reading message body: %v", err)
-	}
-
-	var netMsg protocol.NetworkMessage
-	if err := proto.Unmarshal(data, &netMsg); err != nil {
-		log.Printf("Error unmarshaling message: %v", err)
-	}
-
-	// see tracker to understand how its done
-	// if i forget how to do it
-
+	netMsg := utils.ReceiveNetMsg(conn)
 	switch msg := netMsg.MessageType.(type) {
 	case *protocol.NetworkMessage_Announce:
 		// Transfer the announce message to the tracker
@@ -144,25 +122,7 @@ func (d *Daemon) listenTrackerMessages() {
 			log.Println("Stopping the tracker message listener")
 			return
 		default:
-			var msgLen uint32
-			if err := binary.Read(d.TrackerConn, binary.BigEndian, &msgLen); err != nil {
-				if err != io.EOF {
-					log.Printf("Error reading message length: %v", err)
-				}
-				break
-			}
-			data := make([]byte, msgLen)
-			if _, err := io.ReadFull(d.TrackerConn, data); err != nil {
-				log.Printf("Error reading message body: %v", err)
-				break
-			}
-
-			var netMsg protocol.NetworkMessage
-			if err := proto.Unmarshal(data, &netMsg); err != nil {
-				log.Printf("Error unmarshaling message: %v", err)
-				continue
-			}
-
+			netMsg := utils.ReceiveNetMsg(d.TrackerConn)
 			switch msg := netMsg.MessageType.(type) {
 			case *protocol.NetworkMessage_PeerListResponse:
 				log.Printf("Received peer list response from tracker: %+v", msg.PeerListResponse)
@@ -172,7 +132,7 @@ func (d *Daemon) listenTrackerMessages() {
 				}
 				delete(d.PendingRequests, msg.PeerListResponse.GetFileHash())
 
-				err := utils.SendNetMsg(cliConn, &netMsg)
+				err := utils.SendNetMsg(cliConn, netMsg)
 				if err != nil {
 					log.Fatal(err)
 				}
