@@ -10,6 +10,20 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func SendAnnounceMsg(conn net.Conn, msg *protocol.AnnounceMessage) error {
+	netMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_Announce{
+			Announce: msg,
+		},
+	}
+	err := SendNetMsg(conn, netMsg)
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	return nil
+}
+
 // SendNetMsg takes in a connection and a network message
 // and sends the network message over the connection
 func SendNetMsg(conn net.Conn, msg *protocol.NetworkMessage) error {
@@ -31,6 +45,9 @@ func SendNetMsg(conn net.Conn, msg *protocol.NetworkMessage) error {
 	return nil
 }
 
+// ReceiveNetMsg reads a network message from a connection
+// and returns the network message
+// It is a blocking call
 func ReceiveNetMsg(conn net.Conn) *protocol.NetworkMessage {
 	var msgLen uint32
 	if err := binary.Read(conn, binary.BigEndian, &msgLen); err != nil {

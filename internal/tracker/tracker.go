@@ -104,9 +104,8 @@ func (t *Tracker) ListenCLIConnMsgs(cliConn net.Conn) {
 				log.Printf("Client %s disconnected", remoteAddr)
 				return
 			case *protocol.NetworkMessage_Announce:
-				log.Printf("Received announce from %s: %v", remoteAddr, msg.Announce)
+				log.Printf("Received Announce message from %s: %v", remoteAddr, msg.Announce)
 				files := msg.Announce.GetFiles()
-				log.Printf("Announce Files: %+v", files)
 				for _, file := range files {
 					totalChunks := int(file.GetTotalChunks())
 					maxChunkSize := int(file.GetChunkSize())

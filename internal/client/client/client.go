@@ -41,18 +41,6 @@ func NewClient() (*Client, error) {
 	}, nil
 }
 
-func (c *Client) AnnounceFile(msg *protocol.AnnounceMessage) {
-	netMsg := &protocol.NetworkMessage{
-		MessageType: &protocol.NetworkMessage_Announce{
-			Announce: msg,
-		},
-	}
-	err := utils.SendNetMsg(c.DaemonConn, netMsg)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
 func (c *Client) WaitForPeerList() *protocol.PeerListResponse {
 	netMsg := utils.ReceiveNetMsg(c.DaemonConn)
 	switch msg := netMsg.MessageType.(type) {

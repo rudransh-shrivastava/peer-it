@@ -52,13 +52,13 @@ var daemonCmd = &cobra.Command{
 			log.Fatal(err)
 			return
 		}
-		fileStore := store.NewFileStore(db)
 
 		conn, err := net.Dial("tcp", remoteAddr)
 		if err != nil {
 			log.Fatal(err)
 			return
 		}
+		fileStore := store.NewFileStore(db)
 		daemon := newDaemon(ctx, conn, fileStore)
 		daemon.startDaemon()
 	},
@@ -109,12 +109,21 @@ func (d *Daemon) handleCLIRequest(conn net.Conn) {
 	case *protocol.NetworkMessage_Announce:
 		// Transfer the announce message to the tracker
 		log.Printf("Received Announce message from CLI: %+v", msg.Announce)
-		d.SendAnnounceMsg(msg.Announce)
+		log.Printf("Sending Announce message to Tracker: %+v ", msg.Announce)
+
+		d.TrackerConnMutex.Lock()
+		err := utils.SendAnnounceMsg(d.TrackerConn, msg.Announce)
+		if err != nil {
+			log.Fatal(err)
+		}
+		d.TrackerConnMutex.Unlock()
+
 	case *protocol.NetworkMessage_PeerListRequest:
 		// Transfer the peer list request to the tracker
 		log.Printf("Received PeerListRequest message from CLI: %+v", msg.PeerListRequest)
 		d.PendingRequests[msg.PeerListRequest.GetFileHash()] = conn
-		d.SendPeerListRequestMsg(msg.PeerListRequest)
+		log.Printf("Sending PeerListRequest message to Tracker: %+v", msg.PeerListRequest)
+		d.SendPeerListRequestMsg(msg.PeerListRequest) // TODO
 	}
 }
 
@@ -143,20 +152,6 @@ func (d *Daemon) listenTrackerMessages() {
 			}
 		}
 	}
-}
-
-func (d *Daemon) SendAnnounceMsg(msg *protocol.AnnounceMessage) {
-	netMsg := &protocol.NetworkMessage{
-		MessageType: &protocol.NetworkMessage_Announce{
-			Announce: msg,
-		},
-	}
-	d.TrackerConnMutex.Lock()
-	err := utils.SendNetMsg(d.TrackerConn, netMsg)
-	if err != nil {
-		log.Fatal(err)
-	}
-	d.TrackerConnMutex.Unlock()
 }
 
 func (d *Daemon) SendPeerListRequestMsg(msg *protocol.PeerListRequest) {
@@ -192,23 +187,17 @@ func (d *Daemon) initConnMsgs() {
 	announceMsg := &protocol.AnnounceMessage{
 		Files: fileInfoMsgs,
 	}
-	netMsg := &protocol.NetworkMessage{
-		MessageType: &protocol.NetworkMessage_Announce{
-			Announce: announceMsg,
-		},
-	}
 
 	d.TrackerConnMutex.Lock()
-	err = utils.SendNetMsg(d.TrackerConn, netMsg)
+	err = utils.SendAnnounceMsg(d.TrackerConn, announceMsg)
 	if err != nil {
 		log.Fatal(err)
 	}
 	d.TrackerConnMutex.Unlock()
 
-	log.Printf("Sent announce to tracker: %+v", announceMsg)
+	log.Printf("Sent initial Announce message to Tracker: %+v", announceMsg)
 	// Send heartbeats every n seconds
 	go d.sendHeartBeats()
-
 }
 
 func (d *Daemon) sendHeartBeats() {

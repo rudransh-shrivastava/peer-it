@@ -12,6 +12,7 @@ import (
 	"github.com/rudransh-shrivastava/peer-it/internal/client/client"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -112,7 +113,7 @@ var registerCmd = &cobra.Command{
 		}
 
 		// send announce message to tracker to tell it to add the file
-		log.Printf("Preparing to send announce to tracker with newly created file")
+		log.Printf("Preparing to send Announce message to Tracker with newly created file")
 
 		fileInfoMsgs := make([]*protocol.FileInfo, 0)
 		fileInfoMsgs = append(fileInfoMsgs, &protocol.FileInfo{
@@ -125,10 +126,12 @@ var registerCmd = &cobra.Command{
 		announceMsg := &protocol.AnnounceMessage{
 			Files: fileInfoMsgs,
 		}
-
-		client.AnnounceFile(announceMsg)
-
-		log.Printf("registered %s successfully with the tracker \n", filePath)
+		err = utils.SendAnnounceMsg(client.DaemonConn, announceMsg)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+		log.Printf("Registered %s successfully with the Tracker \n", filePath)
 	},
 }
 
