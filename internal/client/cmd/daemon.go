@@ -51,13 +51,15 @@ type Daemon struct {
 	TrackerConn      net.Conn
 	TrackerConnMutex sync.Mutex
 	FileStore        *store.FileStore
+	PendingRequests  map[string]net.Conn
 }
 
 func newDaemon(ctx context.Context, conn net.Conn, fileStore *store.FileStore) *Daemon {
 	return &Daemon{
-		Ctx:         ctx,
-		TrackerConn: conn,
-		FileStore:   fileStore,
+		Ctx:             ctx,
+		TrackerConn:     conn,
+		FileStore:       fileStore,
+		PendingRequests: make(map[string]net.Conn),
 	}
 }
 
@@ -101,7 +103,6 @@ func (d *Daemon) startIPCServer() {
 }
 
 func (d *Daemon) handleCLIRequest(conn net.Conn) {
-	defer conn.Close()
 	var msgLen uint32
 	if err := binary.Read(conn, binary.BigEndian, &msgLen); err != nil {
 		if err != io.EOF {
@@ -125,11 +126,12 @@ func (d *Daemon) handleCLIRequest(conn net.Conn) {
 	switch msg := netMsg.MessageType.(type) {
 	case *protocol.NetworkMessage_Announce:
 		// Transfer the announce message to the tracker
-		log.Printf("Received Announce message in the daemon: %+v", msg.Announce)
+		log.Printf("Received Announce message from CLI: %+v", msg.Announce)
 		d.SendAnnounceMsg(msg.Announce)
 	case *protocol.NetworkMessage_PeerListRequest:
 		// Transfer the peer list request to the tracker
-		log.Printf("Received PeerListRequest message in the daemon: %+v", msg.PeerListRequest)
+		log.Printf("Received PeerListRequest message from CLI: %+v", msg.PeerListRequest)
+		d.PendingRequests[msg.PeerListRequest.GetFileHash()] = conn
 		d.SendPeerListRequestMsg(msg.PeerListRequest)
 	}
 }
@@ -162,7 +164,26 @@ func (d *Daemon) listenTrackerMessages() {
 
 			switch msg := netMsg.MessageType.(type) {
 			case *protocol.NetworkMessage_PeerListResponse:
-				log.Printf("Received peer list response: %+v", msg.PeerListResponse)
+				log.Printf("Received peer list response from tracker: %+v", msg.PeerListResponse)
+				conn, exists := d.PendingRequests[msg.PeerListResponse.GetFileHash()]
+				if !exists {
+					log.Printf("No Requests for file hash: %s", msg.PeerListResponse.GetFileHash())
+				}
+				delete(d.PendingRequests, msg.PeerListResponse.GetFileHash())
+
+				data, err := proto.Marshal(&netMsg)
+				if err != nil {
+					log.Println("Error marshalling message:", err)
+				}
+				msgLen := uint32(len(data))
+				if err := binary.Write(conn, binary.BigEndian, msgLen); err != nil {
+					log.Printf("Error sending message length: %v", err)
+				}
+
+				if _, err := conn.Write(data); err != nil {
+					log.Printf("Error sending message: %v", err)
+				}
+				log.Printf("Sent peer list response to CLI")
 			}
 		}
 	}

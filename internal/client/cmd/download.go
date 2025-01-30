@@ -24,5 +24,7 @@ var downloadCmd = &cobra.Command{
 			FileHash: fileHash,
 		}
 		client.RequestPeerList(&peerListReqMsg)
+		client.WaitForPeerList()
+		log.Printf("Done waiting... now send the damn connection to the peers")
 	},
 }
