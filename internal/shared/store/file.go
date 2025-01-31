@@ -34,6 +34,15 @@ func (fs *FileStore) GetFiles() ([]schema.File, error) {
 	return files, nil
 }
 
+func (fs *FileStore) GetChunks(fileHash string) ([]schema.Chunk, error) {
+	chunks := []schema.Chunk{}
+	err := fs.DB.Raw("SELECT * FROM chunks WHERE file_id IN (SELECT id FROM files WHERE checksum = ?)", fileHash).Scan(&chunks).Error
+	if err != nil {
+		return nil, err
+	}
+	return chunks, nil
+}
+
 func (fs *FileStore) GetFileByChecksum(checksum string) (*schema.File, error) {
 	file := &schema.File{}
 	if err := fs.DB.First(file, "checksum = ?", checksum).Error; err != nil {

@@ -31,14 +31,14 @@ func NewTracker(peerStore *store.PeerStore, fileStore *store.FileStore, chunkSto
 }
 
 func (t *Tracker) Start() {
-	listen, err := net.Listen("tcp", ":8080")
+	listen, err := net.Listen("tcp", ":42069")
 	if err != nil {
 		log.Println("Error starting TCP server:", err)
 		return
 	}
 	defer listen.Close()
 
-	log.Println("Server listening on port 8080")
+	log.Println("Server listening on port 42069")
 
 	for {
 		conn, err := listen.Accept()
@@ -140,6 +140,9 @@ func (t *Tracker) ListenCLIConnMsgs(cliConn net.Conn) {
 
 				peers := make([]*protocol.PeerInfo, 0)
 				for _, peer := range dbPeers {
+					if peer.IPAddress == clientIP && peer.Port == clientPort {
+						continue
+					}
 					port, err := strconv.Atoi(peer.Port)
 					int32port := int32(port)
 					if err != nil {

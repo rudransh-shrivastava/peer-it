@@ -20,18 +20,18 @@ const maxChunkSize = 256 * 1024
 
 // Chunks the file into 256kb chunks, generates checksums for each chunk and stores them in the database
 var registerCmd = &cobra.Command{
-	Use:   "register path/to/file",
+	Use:   "register path/to/file ipc-socket-index",
 	Short: "register a file to the tracker server",
 	Long:  `registers a file to the tracker server to make it available for download by other peers.`,
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		client, err := client.NewClient()
+		filePath := args[0]
+		socketIndex := args[1]
+		client, err := client.NewClient(socketIndex)
 		if err != nil {
 			log.Fatal(err)
 			return
 		}
-		filePath := args[0]
-
 		file, err := os.Open(filePath)
 		if err != nil {
 			log.Println(err)

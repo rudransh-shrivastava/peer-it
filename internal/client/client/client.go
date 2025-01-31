@@ -16,9 +16,11 @@ type Client struct {
 
 	FileStore  *store.FileStore
 	ChunkStore *store.ChunkStore
+
+	IPCSocketIndex string
 }
 
-func NewClient() (*Client, error) {
+func NewClient(index string) (*Client, error) {
 	db, err := db.NewDB()
 	if err != nil {
 		log.Fatal(err)
@@ -27,17 +29,18 @@ func NewClient() (*Client, error) {
 
 	fileStore := store.NewFileStore(db)
 	chunkStore := store.NewChunkStore(db)
-
-	conn, err := net.Dial("unix", "/tmp/pit-daemon.sock")
+	socketUrl := "/tmp/pit-daemon-" + index + ".sock"
+	conn, err := net.Dial("unix", socketUrl)
 	if err != nil {
 		log.Fatal(err)
 		return &Client{}, err
 	}
 
 	return &Client{
-		DaemonConn: conn,
-		FileStore:  fileStore,
-		ChunkStore: chunkStore,
+		DaemonConn:     conn,
+		FileStore:      fileStore,
+		ChunkStore:     chunkStore,
+		IPCSocketIndex: index,
 	}, nil
 }
 
@@ -46,9 +49,10 @@ func (c *Client) WaitForPeerList() *protocol.PeerListResponse {
 	switch msg := netMsg.MessageType.(type) {
 	case *protocol.NetworkMessage_PeerListResponse:
 		log.Printf("Received peer list response from daemon %+v", msg)
+		peerListResponse := netMsg.GetPeerListResponse()
+		return peerListResponse
 	default:
 		log.Printf("Unexpected message type: %T", msg)
 	}
-	peerListResponse := netMsg.GetPeerListResponse()
-	return peerListResponse
+	return nil
 }

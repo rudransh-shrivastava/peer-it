@@ -17,8 +17,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const remoteAddr = "localhost:8080"
-
 type Daemon struct {
 	Ctx context.Context
 
@@ -28,22 +26,38 @@ type Daemon struct {
 	FileStore *store.FileStore
 
 	PendingRequests map[string]net.Conn
+	IPCSocketIndex  string
+	Addr            string
 }
 
-func newDaemon(ctx context.Context, conn net.Conn, fileStore *store.FileStore) *Daemon {
+func newDaemon(ctx context.Context, conn net.Conn, fileStore *store.FileStore, ipcSocketIndex string, addr string) *Daemon {
 	return &Daemon{
 		Ctx:             ctx,
 		TrackerConn:     conn,
 		FileStore:       fileStore,
 		PendingRequests: make(map[string]net.Conn),
+		IPCSocketIndex:  ipcSocketIndex,
+		Addr:            addr,
 	}
 }
 
 var daemonCmd = &cobra.Command{
-	Use:   "daemon",
+	Use:   "daemon port ipc-socket-index remote-address",
 	Short: "runs peer-it daemon",
 	Long:  `runs the peer-it daemon in the background, the daemon uses unix sockets to communicate with the CLI`,
+	Args:  cobra.ExactArgs(3),
 	Run: func(cmd *cobra.Command, args []string) {
+		daemonPort := args[0]
+		daemonAddr := "localhost:8080"
+		if daemonPort != "" {
+			daemonAddr = "localhost" + ":" + daemonPort
+		}
+		log.Printf("Daemon port: %s", daemonPort)
+		ipcSocketIndex := args[1]
+		log.Printf("IPC Socket Index: %s", ipcSocketIndex)
+		trackerAddr := args[2]
+		log.Printf("Tracker Address: %s", trackerAddr)
+
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -53,13 +67,13 @@ var daemonCmd = &cobra.Command{
 			return
 		}
 
-		conn, err := net.Dial("tcp", remoteAddr)
+		conn, err := net.Dial("tcp", trackerAddr)
 		if err != nil {
 			log.Fatal(err)
 			return
 		}
 		fileStore := store.NewFileStore(db)
-		daemon := newDaemon(ctx, conn, fileStore)
+		daemon := newDaemon(ctx, conn, fileStore, ipcSocketIndex, daemonAddr)
 		daemon.startDaemon()
 	},
 }
@@ -76,7 +90,7 @@ func (d *Daemon) startDaemon() {
 
 	d.initConnMsgs()
 
-	log.Println("Daemon ready")
+	log.Printf("Daemon ready, running on %s", d.Addr)
 
 	<-sigChan
 	log.Println("Shutting down daemon...")
@@ -87,8 +101,10 @@ func (d *Daemon) startDaemon() {
 }
 
 func (d *Daemon) startIPCServer() {
-	os.Remove("/tmp/pit-daemon.sock")
-	l, err := net.Listen("unix", "/tmp/pit-daemon.sock")
+	socketUrl := "/tmp/pit-daemon-" + d.IPCSocketIndex + ".sock"
+	os.Remove(socketUrl)
+
+	l, err := net.Listen("unix", socketUrl)
 	if err != nil {
 		panic(err)
 	}

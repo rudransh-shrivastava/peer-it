@@ -40,6 +40,20 @@ func SendPeerListRequestMsg(conn net.Conn, msg *protocol.PeerListRequest) error 
 	return nil
 }
 
+func SendIntroductionMsg(conn net.Conn, msg *protocol.IntroductionMessage) error {
+	netMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_Introduction{
+			Introduction: msg,
+		},
+	}
+	err := SendNetMsg(conn, netMsg)
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	return nil
+}
+
 // SendNetMsg takes in a connection and a network message
 // and sends the network message over the connection
 func SendNetMsg(conn net.Conn, msg *protocol.NetworkMessage) error {
