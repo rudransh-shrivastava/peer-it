@@ -153,13 +153,13 @@ func (t *Tracker) ListenCLIConnMsgs(cliConn net.Conn) {
 						continue
 					}
 
-					publicListenPort, err := t.PeerStore.FindPublicListenPort(peer.IPAddress, peer.Port)
+					publicIPAddr, publicListenPort, err := t.PeerStore.FindPublicListenPort(peer.IPAddress, peer.Port)
 					if err != nil {
 						log.Printf("Error finding public listen port: %v", err)
 					}
-					log.Printf("Got public port for %+v from db %s", peer, publicListenPort)
+					log.Printf("Got public IP:PORT for %+v from db %s:%s", peer, publicIPAddr, publicListenPort)
 					peers = append(peers, &protocol.PeerInfo{
-						IpAddress: peer.IPAddress,
+						IpAddress: publicIPAddr,
 						Port:      publicListenPort,
 					})
 				}

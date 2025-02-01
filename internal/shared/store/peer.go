@@ -73,16 +73,16 @@ func (ps *PeerStore) RegisterPeerPublicListenPort(ip, port, publicListenPort, pu
 	return ps.DB.Create(&peerListner).Error
 }
 
-func (ps *PeerStore) FindPublicListenPort(ip, port string) (string, error) {
+func (ps *PeerStore) FindPublicListenPort(ip, port string) (string, string, error) {
 	peer := &schema.Peer{}
 	err := ps.DB.First(&peer, "ip_address = ? AND port = ?", ip, port).Error
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	peerListener := &schema.PeerListener{}
 	err = ps.DB.First(&peerListener, "peer_id = ?", peer.ID).Error
 	log.Printf("ip: %s, port: %s, listenPort: %s", ip, port, peerListener.PublicListenPort)
-	return peerListener.PublicListenPort, nil
+	return peerListener.PublicIpAddress, peerListener.PublicListenPort, nil
 }
 
 // TODO: implement joins instead of searching in the db
