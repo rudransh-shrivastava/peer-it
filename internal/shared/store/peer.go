@@ -59,7 +59,7 @@ func (ps *PeerStore) GetPeersByFileHash(fileHash string) ([]schema.Peer, error) 
 	return peers, nil
 }
 
-func (ps *PeerStore) RegisterPeerPublicListenPort(ip, port, publicListenPort string) error {
+func (ps *PeerStore) RegisterPeerPublicListenPort(ip, port, publicListenPort, publicIPAddr string) error {
 	peer := &schema.Peer{}
 	err := ps.DB.First(&peer, "ip_address = ? AND port = ?", ip, port).Error
 	if err != nil {
@@ -68,6 +68,7 @@ func (ps *PeerStore) RegisterPeerPublicListenPort(ip, port, publicListenPort str
 	peerListner := &schema.PeerListener{
 		Peer:             *peer,
 		PublicListenPort: publicListenPort,
+		PublicIpAddress:  publicIPAddr,
 	}
 	return ps.DB.Create(&peerListner).Error
 }

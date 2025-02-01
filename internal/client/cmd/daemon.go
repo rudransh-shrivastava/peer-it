@@ -285,6 +285,7 @@ func (d *Daemon) initConnMsgs() {
 	// Hit a STUN server and send the public port if running as production
 	log.Printf("Sending Register message to Tracker")
 	d.PublicListenPort = strings.Split(d.LocalAddr, ":")[1]
+	d.PublicIP = "localhost"
 	if d.Mode == "prod" {
 		// Hit a STUN server and get the public port
 		log.Printf("Trying to hit STUN servers to get public listen port")
@@ -297,7 +298,8 @@ func (d *Daemon) initConnMsgs() {
 		log.Printf("Found Public IP %s", publicIP)
 	}
 	registerMsg := &protocol.RegisterMessage{
-		ListenPort: d.PublicListenPort,
+		PublicIpAddress: d.PublicIP,
+		ListenPort:      d.PublicListenPort,
 	}
 	utils.SendRegisterMsg(d.TrackerConn, registerMsg)
 	log.Printf("Sent Register message to Tracker: %+v", registerMsg)

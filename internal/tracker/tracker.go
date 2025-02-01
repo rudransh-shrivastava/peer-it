@@ -97,7 +97,7 @@ func (t *Tracker) ListenCLIConnMsgs(cliConn net.Conn) {
 			case *protocol.NetworkMessage_Register:
 				// Save the public listener port of the client in DB
 				log.Printf("Received register message from %s: %v", remoteAddr, msg.Register)
-				err := t.PeerStore.RegisterPeerPublicListenPort(clientIP, clientPort, msg.Register.GetListenPort())
+				err := t.PeerStore.RegisterPeerPublicListenPort(clientIP, clientPort, msg.Register.GetListenPort(), msg.Register.GetListenPort())
 				if err != nil {
 					log.Printf("Error registering client: %v", err)
 				}

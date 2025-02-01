@@ -19,7 +19,8 @@ message NetworkMessage {
 }
 
 message RegisterMessage {
-    string listen_port = 1;
+    string public_ip_address = 1;
+    string listen_port = 2;
 }
 
 message PeerInfo {

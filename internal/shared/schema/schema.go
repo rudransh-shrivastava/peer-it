@@ -38,6 +38,7 @@ type PeerListener struct {
 	PeerID           uint `gorm:"not null;foreignKey:PeerID;constraint:OnDelete:CASCADE"`
 	Peer             Peer
 	PublicListenPort string
+	PublicIpAddress  string
 }
 
 // Relation between peers and files
