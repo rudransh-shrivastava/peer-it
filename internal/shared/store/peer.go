@@ -1,6 +1,8 @@
 package store
 
 import (
+	"log"
+
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
 	"gorm.io/gorm"
 )
@@ -42,7 +44,9 @@ func (ps *PeerStore) AddPeerToSwarm(ip string, port string, fileHash string) err
 	return ps.DB.Create(&swarm).Error
 }
 
+// TODO: good error handling
 func (ps *PeerStore) DropAllPeers() error {
+	ps.DB.Exec("DELETE FROM peer_listeners")
 	return ps.DB.Exec("DELETE FROM peers").Error
 }
 
@@ -54,3 +58,30 @@ func (ps *PeerStore) GetPeersByFileHash(fileHash string) ([]schema.Peer, error) 
 	}
 	return peers, nil
 }
+
+func (ps *PeerStore) RegisterPeerPublicListenPort(ip, port, publicListenPort string) error {
+	peer := &schema.Peer{}
+	err := ps.DB.First(&peer, "ip_address = ? AND port = ?", ip, port).Error
+	if err != nil {
+		return err
+	}
+	peerListner := &schema.PeerListener{
+		Peer:             *peer,
+		PublicListenPort: publicListenPort,
+	}
+	return ps.DB.Create(&peerListner).Error
+}
+
+func (ps *PeerStore) FindPublicListenPort(ip, port string) (string, error) {
+	peer := &schema.Peer{}
+	err := ps.DB.First(&peer, "ip_address = ? AND port = ?", ip, port).Error
+	if err != nil {
+		return "", err
+	}
+	peerListener := &schema.PeerListener{}
+	err = ps.DB.First(&peerListener, "peer_id = ?", peer.ID).Error
+	log.Printf("ip: %s, port: %s, listenPort: %s", ip, port, peerListener.PublicListenPort)
+	return peerListener.PublicListenPort, nil
+}
+
+// TODO: implement joins instead of searching in the db

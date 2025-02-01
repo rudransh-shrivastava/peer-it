@@ -14,12 +14,17 @@ message NetworkMessage {
         HeartbeatMessage heartbeat = 6;
         IntroductionMessage introduction = 7;
         GoodbyeMessage goodbye = 8;
+        RegisterMessage register = 9;
     }
+}
+
+message RegisterMessage {
+    string listen_port = 1;
 }
 
 message PeerInfo {
     string ip_address = 1;
-    int32 port = 2;
+    string port = 2;
 }
 
 message FileInfo {

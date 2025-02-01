@@ -3,7 +3,6 @@ package tracker
 import (
 	"log"
 	"net"
-	"strconv"
 	"time"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
@@ -95,6 +94,14 @@ func (t *Tracker) ListenCLIConnMsgs(cliConn net.Conn) {
 
 			switch msg := netMsg.MessageType.(type) {
 			// Reset the timer if the message is a heartbeat
+			case *protocol.NetworkMessage_Register:
+				// Save the public listener port of the client in DB
+				log.Printf("Received register message from %s: %v", remoteAddr, msg.Register)
+				err := t.PeerStore.RegisterPeerPublicListenPort(clientIP, clientPort, msg.Register.GetListenPort())
+				if err != nil {
+					log.Printf("Error registering client: %v", err)
+				}
+				log.Printf("Client %s registered with public listener port %s", remoteAddr, msg.Register.GetListenPort())
 			case *protocol.NetworkMessage_Heartbeat:
 				log.Printf("Received heartbeat from %s: %v", remoteAddr, msg.Heartbeat)
 				timeout.Reset(ClientTimeout * time.Second)
@@ -141,17 +148,19 @@ func (t *Tracker) ListenCLIConnMsgs(cliConn net.Conn) {
 				peers := make([]*protocol.PeerInfo, 0)
 				for _, peer := range dbPeers {
 					if peer.IPAddress == clientIP && peer.Port == clientPort {
+						log.Printf("Skipping %s : %s", clientIP, clientPort)
+						log.Printf("Skipped: %+v", peer)
 						continue
 					}
-					port, err := strconv.Atoi(peer.Port)
-					int32port := int32(port)
+
+					publicListenPort, err := t.PeerStore.FindPublicListenPort(peer.IPAddress, peer.Port)
 					if err != nil {
-						log.Printf("Error converting port to int: %v", err)
-						continue
+						log.Printf("Error finding public listen port: %v", err)
 					}
+					log.Printf("Got public port for %+v from db %s", peer, publicListenPort)
 					peers = append(peers, &protocol.PeerInfo{
 						IpAddress: peer.IPAddress,
-						Port:      int32port,
+						Port:      publicListenPort,
 					})
 				}
 				peerListResponse := &protocol.PeerListResponse{

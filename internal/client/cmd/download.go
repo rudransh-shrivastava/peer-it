@@ -52,8 +52,14 @@ var downloadCmd = &cobra.Command{
 		for _, peer := range peers {
 			// Send Introduction msg to peer
 			log.Printf("Sending Introduction msg to peer: %+v", peer)
-			addr := peer.GetIpAddress() + ":" + string(peer.GetPort())
-			conn, err := net.Dial("udp", addr)
+			var addr string
+			if peer.GetIpAddress() == "::1" {
+				addr = "localhost:" + peer.GetPort()
+			} else {
+				addr = peer.GetIpAddress() + ":" + string(peer.GetPort())
+			}
+			log.Printf("Resolved IP:PORT of peer: %s", addr)
+			conn, err := net.Dial("tcp", addr)
 			if err != nil {
 				log.Println(err)
 				continue
