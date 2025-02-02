@@ -1,12 +1,12 @@
 package cmd
 
 import (
-	"log"
 	"net"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/client/client"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -18,9 +18,10 @@ var downloadCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		fileHash := args[0]
 		ipcSocketIndex := args[1]
-		client, err := client.NewClient(ipcSocketIndex)
+		logger := logger.NewLogger()
+		client, err := client.NewClient(ipcSocketIndex, logger)
 		if err != nil {
-			log.Println(err)
+			logger.Fatal(err)
 			return
 		}
 		peerListReqMsg := protocol.PeerListRequest{
@@ -28,14 +29,14 @@ var downloadCmd = &cobra.Command{
 		}
 		err = utils.SendPeerListRequestMsg(client.DaemonConn, &peerListReqMsg)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 		}
 
 		peerListResponse := client.WaitForPeerList()
 		if fileHash != peerListReqMsg.GetFileHash() {
-			log.Fatal("Response file hash does not match requested file hash")
+			logger.Fatal("Response file hash does not match requested file hash")
 		}
-		log.Printf("Received peer list %+v", peerListResponse.GetPeers())
+		logger.Debugf("Received peer list %+v", peerListResponse.GetPeers())
 		peers := peerListResponse.GetPeers()
 
 		fileInfo, err := client.FileStore.GetFileByChecksum(fileHash)
@@ -43,7 +44,7 @@ var downloadCmd = &cobra.Command{
 
 		fileChunks, err := client.FileStore.GetChunks(fileHash)
 		if err != nil {
-			log.Println(err)
+			logger.Fatal(err)
 
 		}
 		for _, chunk := range fileChunks {
@@ -51,17 +52,17 @@ var downloadCmd = &cobra.Command{
 		}
 		for _, peer := range peers {
 			// Send Introduction msg to peer
-			log.Printf("Sending Introduction msg to peer: %+v", peer)
+			logger.Infof("Sending Introduction msg to peer: %+v", peer)
 			var addr string
 			if peer.GetIpAddress() == "::1" {
 				addr = "localhost:" + peer.GetPort()
 			} else {
 				addr = peer.GetIpAddress() + ":" + string(peer.GetPort())
 			}
-			log.Printf("Resolved IP:PORT of peer: %s", addr)
+			logger.Debugf("Resolved IP:PORT of peer: %s", addr)
 			conn, err := net.Dial("tcp", addr)
 			if err != nil {
-				log.Println(err)
+				logger.Warn(err)
 				continue
 			}
 			introductionMsg := protocol.IntroductionMessage{
@@ -69,13 +70,13 @@ var downloadCmd = &cobra.Command{
 				ChunksMap: chunksMap,
 			}
 
-			log.Printf("Sending chunks map %+v to peer %s", chunksMap, addr)
+			logger.Debugf("Sending chunks map %+v to peer %s", chunksMap, addr)
 			err = utils.SendIntroductionMsg(conn, &introductionMsg)
 			if err != nil {
-				log.Println(err)
+				logger.Warn(err)
 			}
-			log.Printf("Sent introduction message to peer %s: %+v", addr, chunksMap)
+			logger.Debugf("Sent introduction message to peer %s: %+v", addr, chunksMap)
 		}
-		log.Printf("Tried all peers")
+		logger.Infof("Tried all peers")
 	},
 }

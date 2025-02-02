@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"log"
 	"os"
 
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -13,13 +13,15 @@ var rootCmd = &cobra.Command{
 	Use:  `peer-it`,
 	Long: `peer-it is a peer to peer file transfer application`,
 	Run: func(cmd *cobra.Command, args []string) {
-		log.Println("peer-it is a peer to peer file transfer application")
+		logger := logger.NewLogger()
+		logger.Info("peer-it is a peer to peer file transfer application")
 	},
 }
 
 func Execute() {
+	logger := logger.NewLogger()
 	if err := rootCmd.Execute(); err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 		os.Exit(1)
 	}
 }

@@ -1,13 +1,13 @@
 package client
 
 import (
-	"log"
 	"net"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
+	"github.com/sirupsen/logrus"
 )
 
 // This client communicates with the daemon using unix sockets
@@ -18,12 +18,13 @@ type Client struct {
 	ChunkStore *store.ChunkStore
 
 	IPCSocketIndex string
+	Logger         *logrus.Logger
 }
 
-func NewClient(index string) (*Client, error) {
+func NewClient(index string, logger *logrus.Logger) (*Client, error) {
 	db, err := db.NewDB()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 		return &Client{}, err
 	}
 
@@ -32,7 +33,7 @@ func NewClient(index string) (*Client, error) {
 	socketUrl := "/tmp/pit-daemon-" + index + ".sock"
 	conn, err := net.Dial("unix", socketUrl)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 		return &Client{}, err
 	}
 
@@ -41,18 +42,22 @@ func NewClient(index string) (*Client, error) {
 		FileStore:      fileStore,
 		ChunkStore:     chunkStore,
 		IPCSocketIndex: index,
+		Logger:         logger,
 	}, nil
 }
 
 func (c *Client) WaitForPeerList() *protocol.PeerListResponse {
-	netMsg := utils.ReceiveNetMsg(c.DaemonConn)
+	netMsg, err := utils.ReceiveNetMsg(c.DaemonConn)
+	if err != nil {
+		c.Logger.Fatal(err)
+	}
 	switch msg := netMsg.MessageType.(type) {
 	case *protocol.NetworkMessage_PeerListResponse:
-		log.Printf("Received peer list response from daemon %+v", msg)
+		c.Logger.Debugf("Received peer list response from daemon %+v", msg)
 		peerListResponse := netMsg.GetPeerListResponse()
 		return peerListResponse
 	default:
-		log.Printf("Unexpected message type: %T", msg)
+		c.Logger.Warnf("Unexpected message type: %T", msg)
 	}
 	return nil
 }

@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -27,14 +27,15 @@ var registerCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		filePath := args[0]
 		socketIndex := args[1]
-		client, err := client.NewClient(socketIndex)
+		logger := logger.NewLogger()
+		client, err := client.NewClient(socketIndex, logger)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 			return
 		}
 		file, err := os.Open(filePath)
 		if err != nil {
-			log.Println(err)
+			logger.Fatal(err)
 			return
 		}
 		defer file.Close()
@@ -42,14 +43,14 @@ var registerCmd = &cobra.Command{
 		fileName := strings.Split(file.Name(), "/")[len(strings.Split(file.Name(), "/"))-1]
 		fileInfo, err := file.Stat()
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 			return
 		}
 		fileSize := fileInfo.Size()
 		fileTotalChunks := int((fileSize + maxChunkSize - 1) / maxChunkSize)
 		fileHash := sha256.New()
 		if _, err := io.Copy(fileHash, file); err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 			return
 		}
 		fileChecksum := fmt.Sprintf("%x", fileHash.Sum(nil))
@@ -62,18 +63,18 @@ var registerCmd = &cobra.Command{
 			CreatedAt:    time.Now().Unix(),
 		}
 		// log the stats of the file
-		log.Printf("file: %s with size %d and checksum %s\n", fileName, fileSize, fileChecksum)
+		logger.Debugf("file: %s with size %d and checksum %s\n", fileName, fileSize, fileChecksum)
 		created, err := client.FileStore.CreateFile(&schemaFile)
 		if !created {
-			log.Println("file already exists")
+			logger.Info("file already registered with tracker")
 			return
 		}
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 			return
 		}
 
-		log.Printf("Attempting to create chunks with metadata...")
+		logger.Info("Attempting to create chunks with metadata...")
 
 		buffer := make([]byte, maxChunkSize)
 		chunkIndex := 0
@@ -81,7 +82,7 @@ var registerCmd = &cobra.Command{
 		for {
 			n, err := file.Read(buffer)
 			if err != nil && err != io.EOF {
-				log.Println(err)
+				logger.Fatal(err)
 				return
 			}
 			if n == 0 {
@@ -91,29 +92,37 @@ var registerCmd = &cobra.Command{
 			checksum := generateChecksum(buffer[:n])
 			err = client.ChunkStore.CreateChunk(&schemaFile, n, chunkIndex, checksum, false)
 			if err != nil {
-				log.Fatal(err)
+				logger.Fatal(err)
 				return
 			}
-			log.Printf("chunk %d: %s with size %d\n", chunkIndex, checksum, n)
+			logger.Debugf("chunk %d: %s with size %d\n", chunkIndex, checksum, n)
 			chunkIndex++
 		}
 
 		// copy the file to downlaoads/complete
-		createdFile, err := os.Create("downloads/complete/" + fileName)
+		downloadDirPath := fmt.Sprintf("downloads/daemon-%s/", socketIndex)
+		err = os.MkdirAll(downloadDirPath, os.ModePerm)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
+			return
+		}
+
+		createdFile, err := os.Create(downloadDirPath + fileName)
+		if err != nil {
+			logger.Fatal(err)
 			return
 		}
 		defer createdFile.Close()
 
+		file.Seek(0, 0)
 		_, err = io.Copy(createdFile, file)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 			return
 		}
 
 		// send announce message to tracker to tell it to add the file
-		log.Printf("Preparing to send Announce message to Tracker with newly created file")
+		logger.Infof("Preparing to send Announce message to Tracker with newly created file")
 
 		fileInfoMsgs := make([]*protocol.FileInfo, 0)
 		fileInfoMsgs = append(fileInfoMsgs, &protocol.FileInfo{
@@ -128,10 +137,10 @@ var registerCmd = &cobra.Command{
 		}
 		err = utils.SendAnnounceMsg(client.DaemonConn, announceMsg)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 			return
 		}
-		log.Printf("Registered %s successfully with the Tracker \n", filePath)
+		logger.Infof("Registered %s successfully with the Tracker \n", filePath)
 	},
 }
 

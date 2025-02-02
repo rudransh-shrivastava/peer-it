@@ -3,7 +3,6 @@ package utils
 import (
 	"encoding/binary"
 	"io"
-	"log"
 	"net"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
@@ -19,7 +18,6 @@ func SendRegisterMsg(conn net.Conn, msg *protocol.RegisterMessage) error {
 	}
 	err := SendNetMsg(conn, netMsg)
 	if err != nil {
-		log.Fatal(err)
 		return err
 	}
 	return nil
@@ -33,14 +31,12 @@ func SendAnnounceMsg(conn net.Conn, msg *protocol.AnnounceMessage) error {
 	}
 	err := SendNetMsg(conn, netMsg)
 	if err != nil {
-		log.Fatal(err)
 		return err
 	}
 	return nil
 }
 
 func SendPeerListRequestMsg(conn net.Conn, msg *protocol.PeerListRequest) error {
-	log.Printf("Requesting peer list for hash: %s", msg.GetFileHash())
 
 	netMsg := &protocol.NetworkMessage{
 		MessageType: &protocol.NetworkMessage_PeerListRequest{
@@ -49,7 +45,6 @@ func SendPeerListRequestMsg(conn net.Conn, msg *protocol.PeerListRequest) error 
 	}
 	err := SendNetMsg(conn, netMsg)
 	if err != nil {
-		log.Fatal(err)
 		return err
 	}
 	return nil
@@ -63,7 +58,6 @@ func SendIntroductionMsg(conn net.Conn, msg *protocol.IntroductionMessage) error
 	}
 	err := SendNetMsg(conn, netMsg)
 	if err != nil {
-		log.Fatal(err)
 		return err
 	}
 	return nil
@@ -74,17 +68,14 @@ func SendIntroductionMsg(conn net.Conn, msg *protocol.IntroductionMessage) error
 func SendNetMsg(conn net.Conn, msg *protocol.NetworkMessage) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {
-		log.Printf("Error marshalling message: %v", err)
 		return err
 	}
 	msgLen := uint32(len(data))
 	if err := binary.Write(conn, binary.BigEndian, msgLen); err != nil {
-		log.Printf("Error sending message length: %v", err)
 		return err
 	}
 
 	if _, err := conn.Write(data); err != nil {
-		log.Printf("Error sending message: %v", err)
 		return err
 	}
 	return nil
@@ -93,21 +84,21 @@ func SendNetMsg(conn net.Conn, msg *protocol.NetworkMessage) error {
 // ReceiveNetMsg reads a network message from a connection
 // and returns the network message
 // It is a blocking call
-func ReceiveNetMsg(conn net.Conn) *protocol.NetworkMessage {
+func ReceiveNetMsg(conn net.Conn) (*protocol.NetworkMessage, error) {
 	var msgLen uint32
 	if err := binary.Read(conn, binary.BigEndian, &msgLen); err != nil {
 		if err != io.EOF {
-			log.Printf("Error reading message length: %v", err)
+			return nil, err
 		}
 	}
 	data := make([]byte, msgLen)
 	if _, err := io.ReadFull(conn, data); err != nil {
-		log.Printf("Error reading message body: %v", err)
+		return nil, err
 	}
 
 	var netMsg protocol.NetworkMessage
 	if err := proto.Unmarshal(data, &netMsg); err != nil {
-		log.Printf("Error unmarshaling message: %v", err)
+		return nil, err
 	}
-	return &netMsg
+	return &netMsg, nil
 }

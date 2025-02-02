@@ -1,8 +1,6 @@
 package store
 
 import (
-	"log"
-
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
 	"gorm.io/gorm"
 )
@@ -81,7 +79,6 @@ func (ps *PeerStore) FindPublicListenPort(ip, port string) (string, string, erro
 	}
 	peerListener := &schema.PeerListener{}
 	err = ps.DB.First(&peerListener, "peer_id = ?", peer.ID).Error
-	log.Printf("ip: %s, port: %s, listenPort: %s", ip, port, peerListener.PublicListenPort)
 	return peerListener.PublicIpAddress, peerListener.PublicListenPort, nil
 }
 
