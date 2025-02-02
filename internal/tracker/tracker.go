@@ -126,7 +126,7 @@ func (t *Tracker) ListenCLIConnMsgs(cliConn net.Conn) {
 						Size:         file.GetFileSize(),
 						MaxChunkSize: maxChunkSize,
 						TotalChunks:  totalChunks,
-						Checksum:     file.GetFileHash(),
+						Hash:         file.GetFileHash(),
 						CreatedAt:    time.Now().Unix(),
 					}
 					created, err := t.FileStore.CreateFile(schemaFile)

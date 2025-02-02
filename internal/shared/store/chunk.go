@@ -13,16 +13,16 @@ func NewChunkStore(db *gorm.DB) *ChunkStore {
 	return &ChunkStore{DB: db}
 }
 
-func (cs *ChunkStore) CreateChunk(file *schema.File, size int, index int, checksum string, withMetadata bool) error {
+func (cs *ChunkStore) CreateChunk(file *schema.File, size int, index int, hash string, withMetadata bool) error {
 	chunk := schema.Chunk{
 		File:  *(file),
 		Index: index,
 	}
 	if withMetadata {
 		chunkMetadata := schema.ChunkMetadata{
-			Chunk:         chunk,
-			ChunkSize:     size,
-			ChunkCheckSum: checksum,
+			Chunk:     chunk,
+			ChunkSize: size,
+			ChunkHash: hash,
 		}
 		err := cs.DB.Create(&chunkMetadata).Error
 		if err != nil {

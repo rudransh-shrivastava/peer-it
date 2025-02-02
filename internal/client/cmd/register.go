@@ -18,7 +18,7 @@ import (
 
 const maxChunkSize = 256 * 1024
 
-// Chunks the file into 256kb chunks, generates checksums for each chunk and stores them in the database
+// Chunks the file into 256kb chunks, generates hashes for each chunk and stores them in the database
 var registerCmd = &cobra.Command{
 	Use:   "register path/to/file ipc-socket-index",
 	Short: "register a file to the tracker server",
@@ -48,22 +48,22 @@ var registerCmd = &cobra.Command{
 		}
 		fileSize := fileInfo.Size()
 		fileTotalChunks := int((fileSize + maxChunkSize - 1) / maxChunkSize)
-		fileHash := sha256.New()
-		if _, err := io.Copy(fileHash, file); err != nil {
+		hash := sha256.New()
+		if _, err := io.Copy(hash, file); err != nil {
 			logger.Fatal(err)
 			return
 		}
-		fileChecksum := fmt.Sprintf("%x", fileHash.Sum(nil))
+		fileHash := fmt.Sprintf("%x", hash.Sum(nil))
 
 		schemaFile := schema.File{
 			Size:         fileSize,
 			MaxChunkSize: maxChunkSize,
 			TotalChunks:  fileTotalChunks,
-			Checksum:     fileChecksum,
+			Hash:         fileHash,
 			CreatedAt:    time.Now().Unix(),
 		}
 		// log the stats of the file
-		logger.Debugf("file: %s with size %d and checksum %s\n", fileName, fileSize, fileChecksum)
+		logger.Debugf("file: %s with size %d and hash %s\n", fileName, fileSize, fileHash)
 		created, err := client.FileStore.CreateFile(&schemaFile)
 		if !created {
 			logger.Info("file already registered with tracker")
@@ -89,13 +89,13 @@ var registerCmd = &cobra.Command{
 				break
 			}
 
-			checksum := generateChecksum(buffer[:n])
-			err = client.ChunkStore.CreateChunk(&schemaFile, n, chunkIndex, checksum, false)
+			hash := generateHash(buffer[:n])
+			err = client.ChunkStore.CreateChunk(&schemaFile, n, chunkIndex, hash, false)
 			if err != nil {
 				logger.Fatal(err)
 				return
 			}
-			logger.Debugf("chunk %d: %s with size %d\n", chunkIndex, checksum, n)
+			logger.Debugf("chunk %d: %s with size %d\n", chunkIndex, hash, n)
 			chunkIndex++
 		}
 
@@ -128,7 +128,7 @@ var registerCmd = &cobra.Command{
 		fileInfoMsgs = append(fileInfoMsgs, &protocol.FileInfo{
 			FileSize:    schemaFile.Size,
 			ChunkSize:   int32(schemaFile.MaxChunkSize),
-			FileHash:    schemaFile.Checksum,
+			FileHash:    schemaFile.Hash,
 			TotalChunks: int32(schemaFile.TotalChunks),
 		})
 
@@ -144,7 +144,7 @@ var registerCmd = &cobra.Command{
 	},
 }
 
-func generateChecksum(data []byte) string {
+func generateHash(data []byte) string {
 	hash := sha256.New()
 	hash.Write(data)
 	return fmt.Sprintf("%x", hash.Sum(nil))

@@ -39,7 +39,7 @@ var downloadCmd = &cobra.Command{
 		logger.Debugf("Received peer list %+v", peerListResponse.GetPeers())
 		peers := peerListResponse.GetPeers()
 
-		fileInfo, err := client.FileStore.GetFileByChecksum(fileHash)
+		fileInfo, err := client.FileStore.GetFileByHash(fileHash)
 		chunksMap := make([]int32, fileInfo.TotalChunks)
 
 		fileChunks, err := client.FileStore.GetChunks(fileHash)

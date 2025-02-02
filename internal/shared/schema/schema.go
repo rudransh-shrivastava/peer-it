@@ -6,7 +6,7 @@ type File struct {
 	Size         int64
 	MaxChunkSize int
 	TotalChunks  int
-	Checksum     string
+	Hash         string
 	CreatedAt    int64
 }
 
@@ -19,11 +19,11 @@ type Chunk struct {
 }
 
 type ChunkMetadata struct {
-	ID            uint `gorm:"primaryKey"`
-	ChunkID       uint `gorm:"not null;foreignKey:ChunkID;constraint:OnDelete:CASCADE"`
-	Chunk         Chunk
-	ChunkSize     int
-	ChunkCheckSum string
+	ID        uint `gorm:"primaryKey"`
+	ChunkID   uint `gorm:"not null;foreignKey:ChunkID;constraint:OnDelete:CASCADE"`
+	Chunk     Chunk
+	ChunkSize int
+	ChunkHash string
 }
 
 // Requires peer store

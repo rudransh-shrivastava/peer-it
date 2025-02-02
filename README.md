@@ -23,6 +23,6 @@ Features [WIP]:
 - [x] A custom protocol for files, chunks, messages transfer and peer to peer, peer to tracker communication
 - [x] A CLI for downloading and registering new files.
 - [ ] NAT Traversal, for direct peer to peer communication
-- [ ] A `.p2p` or `.pit` file extension that can store the trackers ip, the files checksums, etc.
+- [ ] A `.p2p` or `.pit` file extension that can store the trackers ip, the files hashes, etc.
 
 This project is work in progress.

@@ -261,7 +261,7 @@ func (d *Daemon) initConnMsgs() {
 		fileInfoMsgs = append(fileInfoMsgs, &protocol.FileInfo{
 			FileSize:    file.Size,
 			ChunkSize:   int32(file.MaxChunkSize),
-			FileHash:    file.Checksum,
+			FileHash:    file.Hash,
 			TotalChunks: int32(file.TotalChunks),
 		})
 	}
