@@ -5,10 +5,14 @@ import (
 	"time"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/prouter"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils/logger"
+	"github.com/rudransh-shrivastava/peer-it/internal/tracker/db"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -21,14 +25,28 @@ type Tracker struct {
 	ChunkStore *store.ChunkStore
 
 	Logger *logrus.Logger
+
+	HeartbeatCh chan *protocol.NetworkMessage_Heartbeat
 }
 
-func NewTracker(peerStore *store.PeerStore, fileStore *store.FileStore, chunkStore *store.ChunkStore, logger *logrus.Logger) *Tracker {
+func NewTracker() *Tracker {
+	logger := logger.NewLogger()
+	db, err := db.NewDB()
+	if err != nil {
+		logger.Fatal(err)
+		return &Tracker{}
+	}
+	peerStore := store.NewPeerStore(db)
+	fileStore := store.NewFileStore(db)
+	chunkStore := store.NewChunkStore(db)
+
+	heartbeatCh := make(chan *protocol.NetworkMessage_Heartbeat)
 	return &Tracker{
-		PeerStore:  peerStore,
-		FileStore:  fileStore,
-		ChunkStore: chunkStore,
-		Logger:     logger,
+		PeerStore:   peerStore,
+		FileStore:   fileStore,
+		ChunkStore:  chunkStore,
+		Logger:      logger,
+		HeartbeatCh: heartbeatCh,
 	}
 }
 
@@ -48,20 +66,37 @@ func (t *Tracker) Start() {
 			t.Logger.Warnf("Error accepting connection: %+v", err)
 			continue
 		}
+		t.Logger.Infof("New connection from %s", conn.RemoteAddr().String())
+		msgRouter := prouter.NewMessageRouter(conn)
+		msgRouter.AddRoute(t.HeartbeatCh, func(proto.Message) bool {
+			return true
+		})
 		// Listen for incoming msgs
-		go t.ListenCLIConnMsgs(conn)
+		// go t.ListenDaemonMsgs(conn)
+		go msgRouter.Start()
+		go t.handlePeerMsgs()
+	}
+}
+
+func (t *Tracker) handlePeerMsgs() {
+	for {
+		select {
+		case heartbeat := <-t.HeartbeatCh:
+			t.Logger.Debugf("Received a heartbeat from %s", heartbeat)
+		}
 	}
 }
 
 func (t *Tracker) Stop() {
 	// cleanup peers
+	t.Logger.Infof("Stopping the tracker...")
 	err := t.PeerStore.DropAllPeers()
 	if err != nil {
 		t.Logger.Fatal(err)
 	}
 }
 
-func (t *Tracker) ListenCLIConnMsgs(cliConn net.Conn) {
+func (t *Tracker) ListenDaemonMsgs(cliConn net.Conn) {
 	defer cliConn.Close()
 
 	remoteAddr := cliConn.RemoteAddr().String()
