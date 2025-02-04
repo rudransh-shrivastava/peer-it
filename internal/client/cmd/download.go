@@ -24,6 +24,13 @@ var downloadCmd = &cobra.Command{
 			logger.Fatal(err)
 			return
 		}
+		err = client.SendDownloadSignal(fileHash)
+		if err != nil {
+			logger.Fatal(err)
+			return
+		}
+		return
+		// Handle all this in the daemon
 		peerListReqMsg := protocol.PeerListRequest{
 			FileHash: fileHash,
 		}

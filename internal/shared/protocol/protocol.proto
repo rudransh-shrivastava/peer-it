@@ -15,9 +15,10 @@ message NetworkMessage {
         ChunkRequest chunk_request = 7;
         ChunkResponse chunk_response = 8;
         IntroductionMessage introduction = 9;
+        SignalRegisterMessage signal_register = 10;
+        SignalDownloadMessage signal_download = 11;
     }
 }
-
 
 message AnnounceMessage {
     repeated FileInfo files = 1;
@@ -80,4 +81,12 @@ message FileInfo {
     int64 file_size = 2;
     int32 total_chunks = 3;
     int32 chunk_size = 4;
+}
+
+message SignalRegisterMessage {
+    string file_path = 1;
+}
+
+message SignalDownloadMessage {
+    string file_hash = 1;
 }

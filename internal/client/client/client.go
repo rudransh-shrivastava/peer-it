@@ -63,3 +63,35 @@ func (c *Client) WaitForPeerList() *protocol.PeerListResponse {
 	}
 	return nil
 }
+
+func (c *Client) SendRegisterSignal(filePath string) error {
+	netMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_SignalRegister{
+			SignalRegister: &protocol.SignalRegisterMessage{
+				FilePath: filePath,
+			},
+		},
+	}
+	err := utils.SendNetMsg(c.DaemonConn, netMsg)
+	if err != nil {
+		c.Logger.Warnf("Error sending message to Daemon: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (c *Client) SendDownloadSignal(fileHash string) error {
+	netMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_SignalDownload{
+			SignalDownload: &protocol.SignalDownloadMessage{
+				FileHash: fileHash,
+			},
+		},
+	}
+	err := utils.SendNetMsg(c.DaemonConn, netMsg)
+	if err != nil {
+		c.Logger.Warnf("Error sending message to Daemon: %v", err)
+		return err
+	}
+	return nil
+}

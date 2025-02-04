@@ -33,6 +33,13 @@ var registerCmd = &cobra.Command{
 			logger.Fatal(err)
 			return
 		}
+		err = client.SendRegisterSignal(filePath)
+		if err != nil {
+			logger.Fatal(err)
+			return
+		}
+		return
+		// TODO: Handle all this in the daemon
 		file, err := os.Open(filePath)
 		if err != nil {
 			logger.Fatal(err)

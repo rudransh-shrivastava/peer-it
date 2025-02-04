@@ -37,6 +37,9 @@ type Daemon struct {
 	Logger *logrus.Logger
 
 	TrackerPeerListResponseCh chan *protocol.NetworkMessage_PeerListResponse
+
+	CLISignalRegisterCh chan *protocol.NetworkMessage_SignalRegister
+	CLISignalDownloadCh chan *protocol.NetworkMessage_SignalDownload
 }
 
 func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, localAddr string, mode string) (*Daemon, error) {
@@ -52,6 +55,8 @@ func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, l
 	}
 
 	peerListResponseCh := make(chan *protocol.NetworkMessage_PeerListResponse, 100)
+	signalRegisterCh := make(chan *protocol.NetworkMessage_SignalRegister, 100)
+	signalDownloadCh := make(chan *protocol.NetworkMessage_SignalDownload, 100)
 
 	trackerProuter := prouter.NewMessageRouter(conn)
 	trackerProuter.AddRoute(peerListResponseCh, func(msg proto.Message) bool {
@@ -70,6 +75,8 @@ func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, l
 		Mode:                      mode, // Can be dev or prod
 		Logger:                    logger,
 		TrackerPeerListResponseCh: peerListResponseCh,
+		CLISignalRegisterCh:       signalRegisterCh,
+		CLISignalDownloadCh:       signalDownloadCh,
 	}, nil
 }
 
@@ -147,46 +154,36 @@ func (d *Daemon) startIPCServer() {
 		if err != nil {
 			continue
 		}
-		go d.handleCLIMsgs(cliConn)
+		cliRouter := prouter.NewMessageRouter(cliConn)
+		cliRouter.AddRoute(d.CLISignalRegisterCh, func(msg proto.Message) bool {
+			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_SignalRegister)
+			return ok
+		})
+		cliRouter.AddRoute(d.CLISignalDownloadCh, func(msg proto.Message) bool {
+			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_SignalDownload)
+			return ok
+		})
+
+		go cliRouter.Start()
+		cliAddr := cliConn.RemoteAddr().String()
+		go d.handleCLIMsgs(cliAddr)
 	}
 }
 
-func (d *Daemon) handleCLIMsgs(conn net.Conn) {
-	netMsg, err := utils.UnsafeReceiveNetMsg(conn)
-	if err != nil {
-		d.Logger.Fatal(err)
-	}
-	// TODO: Send announce first thing
-	// TODO: Change implementation how announce from cli is handled, make new msg type of register fiel or somethigns
-	switch msg := netMsg.MessageType.(type) {
-	case *protocol.NetworkMessage_Announce:
-		// Transfer the announce message to the tracker
-		d.Logger.Debugf("Received Announce message from CLI: %+v", msg.Announce)
-		d.Logger.Debugf("Sending Announce message to Tracker: %+v ", msg.Announce)
-		netMsg := &protocol.NetworkMessage{
-			MessageType: &protocol.NetworkMessage_Announce{
-				Announce: msg.Announce,
-			},
-		}
-		err := d.TrackerRouter.WriteMessage(netMsg)
-		if err != nil {
-			d.Logger.Warnf("Error sending message to Tracker: %v", err)
-		}
-
-	case *protocol.NetworkMessage_PeerListRequest:
-		// Transfer the peer list request to the tracker
-		d.Logger.Debugf("Received PeerListRequest message from CLI: %+v", msg.PeerListRequest)
-		d.PendingRequests[msg.PeerListRequest.GetFileHash()] = conn
-		d.Logger.Debugf("Sending PeerListRequest message to Tracker: %+v", msg.PeerListRequest)
-
-		netMsg := &protocol.NetworkMessage{
-			MessageType: &protocol.NetworkMessage_PeerListRequest{
-				PeerListRequest: msg.PeerListRequest,
-			},
-		}
-		err := d.TrackerRouter.WriteMessage(netMsg)
-		if err != nil {
-			d.Logger.Warnf("Error sending message to Tracker: %v", err)
+func (d *Daemon) handleCLIMsgs(cliAddr string) {
+	for {
+		select {
+		case <-d.Ctx.Done():
+			d.Logger.Info("Stopping the CLI message listener")
+			return
+		case downloadSignal := <-d.CLISignalDownloadCh:
+			d.Logger.Debugf("Received a new Download Signal from %s: %v", cliAddr, downloadSignal)
+			d.Logger.Warn("START THE DOWNLOAD PROCESS ")
+			// START THE DOWNLOAD PROCESS
+		case registerSignal := <-d.CLISignalRegisterCh:
+			d.Logger.Debugf("Received a new Register Signal from %s: %v", cliAddr, registerSignal)
+			// START THE REGISTER PROCESS
+			d.Logger.Warn("START THE REGISTER PROCESS ")
 		}
 	}
 }
