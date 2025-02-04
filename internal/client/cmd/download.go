@@ -19,7 +19,7 @@ var downloadCmd = &cobra.Command{
 		fileHash := args[0]
 		ipcSocketIndex := args[1]
 		logger := logger.NewLogger()
-		client, err := client.NewClient(ipcSocketIndex, logger)
+		client, err := client.NewClient(ipcSocketIndex)
 		if err != nil {
 			logger.Fatal(err)
 			return

@@ -7,6 +7,7 @@ import (
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,8 +22,9 @@ type Client struct {
 	Logger         *logrus.Logger
 }
 
-func NewClient(index string, logger *logrus.Logger) (*Client, error) {
+func NewClient(index string) (*Client, error) {
 	db, err := db.NewDB()
+	logger := logger.NewLogger()
 	if err != nil {
 		logger.Fatal(err)
 		return &Client{}, err
@@ -47,7 +49,7 @@ func NewClient(index string, logger *logrus.Logger) (*Client, error) {
 }
 
 func (c *Client) WaitForPeerList() *protocol.PeerListResponse {
-	netMsg, err := utils.ReceiveNetMsg(c.DaemonConn)
+	netMsg, err := utils.UnsafeReceiveNetMsg(c.DaemonConn)
 	if err != nil {
 		c.Logger.Fatal(err)
 	}

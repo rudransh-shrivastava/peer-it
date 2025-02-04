@@ -9,31 +9,15 @@ message NetworkMessage {
         AnnounceMessage announce = 1;
         PeerListRequest peer_list_request = 2;
         PeerListResponse peer_list_response = 3;
-        ChunkRequest chunk_request = 4;
-        ChunkResponse chunk_response = 5;
-        HeartbeatMessage heartbeat = 6;
-        IntroductionMessage introduction = 7;
-        GoodbyeMessage goodbye = 8;
-        RegisterMessage register = 9;
+        HeartbeatMessage heartbeat = 4;
+        GoodbyeMessage goodbye = 5;
+        RegisterMessage register = 6;
+        ChunkRequest chunk_request = 7;
+        ChunkResponse chunk_response = 8;
+        IntroductionMessage introduction = 9;
     }
 }
 
-message RegisterMessage {
-    string public_ip_address = 1;
-    string listen_port = 2;
-}
-
-message PeerInfo {
-    string ip_address = 1;
-    string port = 2;
-}
-
-message FileInfo {
-    string file_hash = 1;
-    int64 file_size = 2;
-    int32 total_chunks = 3;
-    int32 chunk_size = 4;
-}
 
 message AnnounceMessage {
     repeated FileInfo files = 1;
@@ -50,6 +34,21 @@ message PeerListResponse {
     repeated PeerInfo peers = 4;
 }
 
+message HeartbeatMessage {
+    int64 timestamp = 1;
+}
+
+// No fields are required for this message
+// If recieved by anyone, delete that peer from the peer list
+message GoodbyeMessage {}
+
+message RegisterMessage {
+    string public_ip_address = 1;
+    string listen_port = 2;
+}
+
+// Peer to Peer Msgs
+
 message ChunkRequest {
     string file_hash = 1;
     int32 chunk_index = 2;
@@ -63,16 +62,22 @@ message ChunkResponse {
     string chunk_hash = 4;
 }
 
-message HeartbeatMessage {
-    int64 timestamp = 1;
-}
 
 // chunks_map: Vector of 0's and 1's signifying which chunks the peer has according to the index
 message IntroductionMessage {
-    string file_hash = 3;
-    repeated int32 chunks_map = 4;
+    string file_hash = 1;
+    repeated int32 chunks_map = 2;
 }
 
-// No fields are required for this message
-// If recieved by anyone, delete that peer from the peer list
-message GoodbyeMessage {}
+// Helper Msgs
+message PeerInfo {
+    string ip_address = 1;
+    string port = 2;
+}
+
+message FileInfo {
+    string file_hash = 1;
+    int64 file_size = 2;
+    int32 total_chunks = 3;
+    int32 chunk_size = 4;
+}

@@ -16,14 +16,14 @@ import (
 // MessageRouter is a simple message router that routes
 // Protobuf messages to channels based on a match function
 type MessageRouter struct {
-	conn   net.Conn
+	Conn   net.Conn
 	done   chan struct{}
 	Routes map[interface{}]func(proto.Message) bool
 }
 
 func NewMessageRouter(conn net.Conn) *MessageRouter {
 	return &MessageRouter{
-		conn:   conn,
+		Conn:   conn,
 		done:   make(chan struct{}),
 		Routes: make(map[interface{}]func(proto.Message) bool),
 	}
@@ -42,7 +42,7 @@ func (r *MessageRouter) Start() {
 
 func (r *MessageRouter) stop() {
 	close(r.done)
-	r.conn.Close()
+	r.Conn.Close()
 }
 
 func (r *MessageRouter) listen() {
@@ -54,7 +54,7 @@ func (r *MessageRouter) listen() {
 			return
 		default:
 			var length uint32
-			if err := binary.Read(r.conn, binary.BigEndian, &length); err != nil {
+			if err := binary.Read(r.Conn, binary.BigEndian, &length); err != nil {
 				if err != io.EOF {
 					log.Printf("Error reading length: %v", err)
 				}
@@ -62,7 +62,7 @@ func (r *MessageRouter) listen() {
 			}
 
 			msgBytes := make([]byte, length)
-			if _, err := io.ReadFull(r.conn, msgBytes); err != nil {
+			if _, err := io.ReadFull(r.Conn, msgBytes); err != nil {
 				log.Printf("Error reading message: %v", err)
 				return
 			}
@@ -85,11 +85,11 @@ func (r *MessageRouter) WriteMessage(msg *protocol.NetworkMessage) error {
 	}
 
 	msgLen := uint32(len(data))
-	if err := binary.Write(r.conn, binary.BigEndian, msgLen); err != nil {
+	if err := binary.Write(r.Conn, binary.BigEndian, msgLen); err != nil {
 		return err
 	}
 
-	if _, err := r.conn.Write(data); err != nil {
+	if _, err := r.Conn.Write(data); err != nil {
 		return err
 	}
 

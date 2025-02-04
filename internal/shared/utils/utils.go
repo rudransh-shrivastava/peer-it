@@ -81,10 +81,10 @@ func SendNetMsg(conn net.Conn, msg *protocol.NetworkMessage) error {
 	return nil
 }
 
-// ReceiveNetMsg reads a network message from a connection
+// UnsafeReceiveNetMsg reads a network message from a connection
 // and returns the network message
 // It is a blocking call
-func ReceiveNetMsg(conn net.Conn) (*protocol.NetworkMessage, error) {
+func UnsafeReceiveNetMsg(conn net.Conn) (*protocol.NetworkMessage, error) {
 	var msgLen uint32
 	if err := binary.Read(conn, binary.BigEndian, &msgLen); err != nil {
 		if err != io.EOF {

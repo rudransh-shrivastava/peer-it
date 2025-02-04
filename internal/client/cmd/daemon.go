@@ -6,24 +6,24 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/prouter"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils/logger"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/proto"
 )
 
 type Daemon struct {
 	Ctx context.Context
 
-	TrackerConn      net.Conn
-	TrackerConnMutex sync.Mutex
+	TrackerRouter *prouter.MessageRouter
 
 	FileStore *store.FileStore
 
@@ -35,19 +35,42 @@ type Daemon struct {
 	PendingRequests  map[string]net.Conn
 
 	Logger *logrus.Logger
+
+	TrackerPeerListResponseCh chan *protocol.NetworkMessage_PeerListResponse
 }
 
-func newDaemon(ctx context.Context, conn net.Conn, fileStore *store.FileStore, ipcSocketIndex string, localAddr string, mode string, logger *logrus.Logger) *Daemon {
-	return &Daemon{
-		Ctx:             ctx,
-		TrackerConn:     conn,
-		FileStore:       fileStore,
-		PendingRequests: make(map[string]net.Conn),
-		IPCSocketIndex:  ipcSocketIndex,
-		LocalAddr:       localAddr,
-		Mode:            mode, // Can be dev or prod
-		Logger:          logger,
+func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, localAddr string, mode string) (*Daemon, error) {
+	db, err := db.NewDB()
+	if err != nil {
+		return &Daemon{}, err
 	}
+	fileStore := store.NewFileStore(db)
+	logger := logger.NewLogger()
+	conn, err := net.Dial("tcp", trackerAddr)
+	if err != nil {
+		return &Daemon{}, err
+	}
+
+	peerListResponseCh := make(chan *protocol.NetworkMessage_PeerListResponse, 100)
+
+	trackerProuter := prouter.NewMessageRouter(conn)
+	trackerProuter.AddRoute(peerListResponseCh, func(msg proto.Message) bool {
+		_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_PeerListResponse)
+		return ok
+	})
+	trackerProuter.Start()
+
+	return &Daemon{
+		Ctx:                       ctx,
+		TrackerRouter:             trackerProuter,
+		FileStore:                 fileStore,
+		PendingRequests:           make(map[string]net.Conn),
+		IPCSocketIndex:            ipcSocketIndex,
+		LocalAddr:                 localAddr,
+		Mode:                      mode, // Can be dev or prod
+		Logger:                    logger,
+		TrackerPeerListResponseCh: peerListResponseCh,
+	}, nil
 }
 
 var daemonCmd = &cobra.Command{
@@ -79,19 +102,11 @@ var daemonCmd = &cobra.Command{
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		db, err := db.NewDB()
+		daemon, err := newDaemon(ctx, trackerAddr, ipcSocketIndex, daemonAddr, daemonMode)
 		if err != nil {
 			logger.Fatal(err)
 			return
 		}
-
-		conn, err := net.Dial("tcp", trackerAddr)
-		if err != nil {
-			logger.Fatal(err)
-			return
-		}
-		fileStore := store.NewFileStore(db)
-		daemon := newDaemon(ctx, conn, fileStore, ipcSocketIndex, daemonAddr, daemonMode, logger)
 		daemon.startDaemon()
 	},
 }
@@ -104,8 +119,8 @@ func (d *Daemon) startDaemon() {
 	d.Logger.Info("Daemon starting...")
 
 	go d.startIPCServer()
-	go d.listenTrackerMessages()
-	go d.listenPeerConn()
+	go d.handleTrackerMsgs()
+	// go d.listenPeerConn()
 
 	d.initConnMsgs()
 
@@ -113,8 +128,6 @@ func (d *Daemon) startDaemon() {
 
 	<-sigChan
 	d.Logger.Info("Shutting down daemon...")
-
-	d.TrackerConn.Close()
 
 	d.Logger.Info("Daemon stopped")
 }
@@ -134,27 +147,31 @@ func (d *Daemon) startIPCServer() {
 		if err != nil {
 			continue
 		}
-		go d.handleCLIRequest(cliConn)
+		go d.handleCLIMsgs(cliConn)
 	}
 }
 
-func (d *Daemon) handleCLIRequest(conn net.Conn) {
-	netMsg, err := utils.ReceiveNetMsg(conn)
+func (d *Daemon) handleCLIMsgs(conn net.Conn) {
+	netMsg, err := utils.UnsafeReceiveNetMsg(conn)
 	if err != nil {
 		d.Logger.Fatal(err)
 	}
+	// TODO: Send announce first thing
+	// TODO: Change implementation how announce from cli is handled, make new msg type of register fiel or somethigns
 	switch msg := netMsg.MessageType.(type) {
 	case *protocol.NetworkMessage_Announce:
 		// Transfer the announce message to the tracker
 		d.Logger.Debugf("Received Announce message from CLI: %+v", msg.Announce)
 		d.Logger.Debugf("Sending Announce message to Tracker: %+v ", msg.Announce)
-
-		d.TrackerConnMutex.Lock()
-		err := utils.SendAnnounceMsg(d.TrackerConn, msg.Announce)
-		if err != nil {
-			d.Logger.Fatal(err)
+		netMsg := &protocol.NetworkMessage{
+			MessageType: &protocol.NetworkMessage_Announce{
+				Announce: msg.Announce,
+			},
 		}
-		d.TrackerConnMutex.Unlock()
+		err := d.TrackerRouter.WriteMessage(netMsg)
+		if err != nil {
+			d.Logger.Warnf("Error sending message to Tracker: %v", err)
+		}
 
 	case *protocol.NetworkMessage_PeerListRequest:
 		// Transfer the peer list request to the tracker
@@ -162,75 +179,68 @@ func (d *Daemon) handleCLIRequest(conn net.Conn) {
 		d.PendingRequests[msg.PeerListRequest.GetFileHash()] = conn
 		d.Logger.Debugf("Sending PeerListRequest message to Tracker: %+v", msg.PeerListRequest)
 
-		d.TrackerConnMutex.Lock()
-		utils.SendPeerListRequestMsg(d.TrackerConn, msg.PeerListRequest)
-		d.TrackerConnMutex.Unlock()
+		netMsg := &protocol.NetworkMessage{
+			MessageType: &protocol.NetworkMessage_PeerListRequest{
+				PeerListRequest: msg.PeerListRequest,
+			},
+		}
+		err := d.TrackerRouter.WriteMessage(netMsg)
+		if err != nil {
+			d.Logger.Warnf("Error sending message to Tracker: %v", err)
+		}
 	}
 }
 
-func (d *Daemon) listenTrackerMessages() {
+func (d *Daemon) handleTrackerMsgs() {
+	d.Logger.Info("Connected to tracker server")
 	for {
 		select {
 		case <-d.Ctx.Done():
 			d.Logger.Info("Stopping the tracker message listener")
 			return
-		default:
-			netMsg, err := utils.ReceiveNetMsg(d.TrackerConn)
+		case peerlistResponse := <-d.TrackerPeerListResponseCh:
+			d.Logger.Debugf("Received peer list response from tracker: %+v", peerlistResponse.PeerListResponse)
+			cliConn, exists := d.PendingRequests[peerlistResponse.PeerListResponse.GetFileHash()]
+			if !exists {
+				d.Logger.Warnf("No Requests for file hash: %s", peerlistResponse.PeerListResponse.GetFileHash())
+			}
+			delete(d.PendingRequests, peerlistResponse.PeerListResponse.GetFileHash())
+
+			netMsg := &protocol.NetworkMessage{
+				MessageType: &protocol.NetworkMessage_PeerListResponse{
+					PeerListResponse: peerlistResponse.PeerListResponse,
+				},
+			}
+
+			err := utils.SendNetMsg(cliConn, netMsg)
 			if err != nil {
-				d.Logger.Fatal(err)
+				d.Logger.Warnf("Error sending message back to daemon: %v", err)
 			}
-			switch msg := netMsg.MessageType.(type) {
-			case *protocol.NetworkMessage_PeerListResponse:
-				d.Logger.Debugf("Received peer list response from tracker: %+v", msg.PeerListResponse)
-				cliConn, exists := d.PendingRequests[msg.PeerListResponse.GetFileHash()]
-				if !exists {
-					d.Logger.Warnf("No Requests for file hash: %s", msg.PeerListResponse.GetFileHash())
-				}
-				delete(d.PendingRequests, msg.PeerListResponse.GetFileHash())
-
-				err := utils.SendNetMsg(cliConn, netMsg)
-				if err != nil {
-					d.Logger.Fatal(err)
-				}
-				d.Logger.Info("Sent peer list response to CLI")
-			}
+			d.Logger.Info("Sent peer list response to CLI")
 		}
 	}
 }
 
-func (d *Daemon) listenPeerConn() {
-	listen, err := net.Listen("tcp", d.LocalAddr)
-	if err != nil {
-		d.Logger.Fatalf("Error starting Peer TCP listener: %+v", err)
-		return
-	}
-	defer listen.Close()
+// func (d *Daemon) listenPeerConn() {
+// 	listen, err := net.Listen("tcp", d.LocalAddr)
+// 	if err != nil {
+// 		d.Logger.Fatalf("Error starting Peer TCP listener: %+v", err)
+// 		return
+// 	}
+// 	defer listen.Close()
 
-	d.Logger.Infof("Listening for peers on addr: %s", d.LocalAddr)
+// 	d.Logger.Infof("Listening for peers on addr: %s", d.LocalAddr)
 
-	for {
-		conn, err := listen.Accept()
-		if err != nil {
-			d.Logger.Warnf("Error accepting connection: %+v", err)
-			continue
-		}
-		// Listen for incoming msgs
-		go d.handlePeerMsgs(conn)
-	}
-}
-
-func (d *Daemon) handlePeerMsgs(peerConn net.Conn) {
-	defer peerConn.Close()
-
-	remoteAddr := peerConn.RemoteAddr().String()
-	// clientIP, clientPort, err := net.SplitHostPort(remoteAddr)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// 	return
-	// }
-
-	d.Logger.Infof("New peer connected: %s\n", remoteAddr)
-}
+// 	for {
+// 		conn, err := listen.Accept()
+// 		if err != nil {
+// 			d.Logger.Warnf("Error accepting connection: %+v", err)
+// 			continue
+// 		}
+// 		// Listen for incoming msgs
+// 		go d.handlePeerMsgs(conn)
+// 	}
+// }
 
 func (d *Daemon) initConnMsgs() {
 	// Send a Register message to the tracker so that the tracker can save our public listneer port
@@ -241,13 +251,24 @@ func (d *Daemon) initConnMsgs() {
 	d.PublicIP = "localhost"
 	if d.Mode == "prod" {
 		// Hit a STUN server and get the public port
+		// TODO: Implement this
 		d.Logger.Info("Trying to hit STUN servers to get public listen port")
 	}
+	// Send a Register message to the tracker the first time we connect
+	// The tracker will register our public IP:PORT
 	registerMsg := &protocol.RegisterMessage{
 		PublicIpAddress: d.PublicIP,
 		ListenPort:      d.PublicListenPort,
 	}
-	utils.SendRegisterMsg(d.TrackerConn, registerMsg)
+	netMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_Register{
+			Register: registerMsg,
+		},
+	}
+	err := d.TrackerRouter.WriteMessage(netMsg)
+	if err != nil {
+		d.Logger.Warnf("Error sending message to Tracker: %v", err)
+	}
 	d.Logger.Debugf("Sent Register message to Tracker: %+v", registerMsg)
 
 	// Send an Announce message to the tracker the first time we connect
@@ -269,19 +290,22 @@ func (d *Daemon) initConnMsgs() {
 		Files: fileInfoMsgs,
 	}
 
-	d.TrackerConnMutex.Lock()
-	err = utils.SendAnnounceMsg(d.TrackerConn, announceMsg)
-	if err != nil {
-		d.Logger.Fatal(err)
+	announceNetMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_Announce{
+			Announce: announceMsg,
+		},
 	}
-	d.TrackerConnMutex.Unlock()
+	err = d.TrackerRouter.WriteMessage(announceNetMsg)
+	if err != nil {
+		d.Logger.Warnf("Error sending message to Tracker: %v", err)
+	}
 
 	d.Logger.Debugf("Sent initial Announce message to Tracker: %+v", announceMsg)
 	// Send heartbeats every n seconds
-	go d.sendHeartBeats()
+	go d.sendHeartBeatsToTracker()
 }
 
-func (d *Daemon) sendHeartBeats() {
+func (d *Daemon) sendHeartBeatsToTracker() {
 	ticker := time.NewTicker(heartbeatInterval * time.Second)
 	defer ticker.Stop()
 	for {
@@ -290,10 +314,6 @@ func (d *Daemon) sendHeartBeats() {
 			d.Logger.Info("Stopping the heart")
 			return
 		case <-ticker.C:
-			if d.TrackerConn == nil {
-				return
-			}
-
 			d.Logger.Info("Sending a heartbeat")
 			hb := &protocol.HeartbeatMessage{
 				Timestamp: time.Now().Unix(),
@@ -305,12 +325,10 @@ func (d *Daemon) sendHeartBeats() {
 				},
 			}
 
-			d.TrackerConnMutex.Lock()
-			err := utils.SendNetMsg(d.TrackerConn, netMsg)
+			err := d.TrackerRouter.WriteMessage(netMsg)
 			if err != nil {
-				d.Logger.Fatal("Error sending heartbeat:", err)
+				d.Logger.Warnf("Error sending message to Tracker: %v", err)
 			}
-			d.TrackerConnMutex.Unlock()
 		}
 	}
 }
