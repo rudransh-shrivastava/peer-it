@@ -44,7 +44,14 @@ func (ps *PeerStore) AddPeerToSwarm(ip string, port string, fileHash string) err
 
 // TODO: good error handling
 func (ps *PeerStore) DropAllPeers() error {
-	ps.DB.Exec("DELETE FROM peer_listeners")
+	err := ps.DB.Exec("DELETE FROM swarms").Error
+	if err != nil {
+		return err
+	}
+	err = ps.DB.Exec("DELETE FROM peer_listeners").Error
+	if err != nil {
+		return err
+	}
 	return ps.DB.Exec("DELETE FROM peers").Error
 }
 

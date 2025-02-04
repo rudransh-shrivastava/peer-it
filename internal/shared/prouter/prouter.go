@@ -40,13 +40,13 @@ func (r *MessageRouter) Start() {
 	go r.listen()
 }
 
-func (r *MessageRouter) Stop() {
+func (r *MessageRouter) stop() {
 	close(r.done)
 	r.conn.Close()
 }
 
 func (r *MessageRouter) listen() {
-	defer r.Stop()
+	defer r.stop()
 
 	for {
 		select {
@@ -77,6 +77,25 @@ func (r *MessageRouter) listen() {
 		}
 	}
 }
+
+func (r *MessageRouter) WriteMessage(msg *protocol.NetworkMessage) error {
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	msgLen := uint32(len(data))
+	if err := binary.Write(r.conn, binary.BigEndian, msgLen); err != nil {
+		return err
+	}
+
+	if _, err := r.conn.Write(data); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (r *MessageRouter) routeMessage(msg proto.Message) {
 	networkMsg, ok := msg.(*protocol.NetworkMessage)
 	if !ok {
@@ -102,5 +121,6 @@ func (r *MessageRouter) routeMessage(msg proto.Message) {
 
 		// no drop
 		chVal.Send(concreteMsg)
+		// chVal.Send(reflect.ValueOf(networkMsg.MessageType))
 	}
 }
