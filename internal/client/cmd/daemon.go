@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/prouter"
@@ -393,7 +392,6 @@ func (d *Daemon) initConnMsgs() {
 	registerMsg := &protocol.RegisterMessage{
 		PublicIpAddress: d.PublicIP,
 		ListenPort:      d.PublicListenPort,
-		ClientId:        uuid.New().String(),
 	}
 
 	for i := 0; i < maxRetries; i++ {

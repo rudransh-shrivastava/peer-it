@@ -46,7 +46,6 @@ message GoodbyeMessage {}
 message RegisterMessage {
     string public_ip_address = 1;
     string listen_port = 2;
-    string client_id = 3;
 }
 
 // Peer to Peer Msgs

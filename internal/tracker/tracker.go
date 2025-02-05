@@ -156,15 +156,14 @@ func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
 			return
 
 		case register := <-channels.RegisterCh:
-			clientID := register.Register.GetClientId()
 			// Save the public listener port of the client in DB
 			t.Logger.Debugf("Register message received from connection %s", prouter.Conn.RemoteAddr())
-			t.Logger.Debugf("Received register message from %s: with UUID %s: %v", daemonAddr, clientID, register)
-			err := t.PeerStore.RegisterPeer(clientID, daemonIP, daemonPort, register.Register.GetPublicIpAddress(), register.Register.GetListenPort())
+			t.Logger.Debugf("Received register message from %s: %v", daemonAddr, register)
+			err := t.PeerStore.RegisterPeer(daemonIP, daemonPort, register.Register.GetPublicIpAddress(), register.Register.GetListenPort())
 			if err != nil {
 				t.Logger.Fatalf("Error registering client: %v", err)
 			}
-			t.Logger.Debugf("Peer %s registered with public listener port %s with UUID %s", daemonAddr, register.Register.GetListenPort(), clientID)
+			t.Logger.Debugf("Peer %s registered with public listener port %s", daemonAddr, register.Register.GetListenPort())
 
 		case announce := <-channels.AnnounceCh:
 			t.Logger.Debugf("Received Announce message from %s: %v", daemonAddr, announce.Announce)
