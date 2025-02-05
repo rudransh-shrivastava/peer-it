@@ -177,7 +177,7 @@ func (d *Daemon) startIPCServer() {
 		})
 
 		go cliRouter.Start()
-		go d.handleCLIMsgs(cliRouter)
+		go d.handleCLIMsgs(cliRouter) // problem here // using multiple go routines for same channels
 	}
 }
 

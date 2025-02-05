@@ -23,8 +23,11 @@ type Tracker struct {
 	FileStore  *store.FileStore
 	ChunkStore *store.ChunkStore
 
-	Logger *logrus.Logger
+	Logger   *logrus.Logger
+	Channels map[string]Channels
+}
 
+type Channels struct {
 	HeartbeatCh       chan *protocol.NetworkMessage_Heartbeat
 	GoodbyeCh         chan *protocol.NetworkMessage_Goodbye
 	RegisterCh        chan *protocol.NetworkMessage_Register
@@ -43,22 +46,12 @@ func NewTracker() *Tracker {
 	fileStore := store.NewFileStore(db)
 	chunkStore := store.NewChunkStore(db)
 
-	heartbeatCh := make(chan *protocol.NetworkMessage_Heartbeat, 100)
-	goodbyeCh := make(chan *protocol.NetworkMessage_Goodbye, 100)
-	registerCh := make(chan *protocol.NetworkMessage_Register, 100)
-	announceCh := make(chan *protocol.NetworkMessage_Announce, 100)
-	peerListRequestCh := make(chan *protocol.NetworkMessage_PeerListRequest, 100)
-
 	return &Tracker{
-		PeerStore:         peerStore,
-		FileStore:         fileStore,
-		ChunkStore:        chunkStore,
-		Logger:            logger,
-		HeartbeatCh:       heartbeatCh,
-		GoodbyeCh:         goodbyeCh,
-		RegisterCh:        registerCh,
-		AnnounceCh:        announceCh,
-		PeerListRequestCh: peerListRequestCh,
+		PeerStore:  peerStore,
+		FileStore:  fileStore,
+		ChunkStore: chunkStore,
+		Logger:     logger,
+		Channels:   make(map[string]Channels),
 	}
 }
 
@@ -80,44 +73,51 @@ func (t *Tracker) Start() {
 		}
 
 		// Setup prouter
+		heartbeatCh := make(chan *protocol.NetworkMessage_Heartbeat, 100)
+		goodbyeCh := make(chan *protocol.NetworkMessage_Goodbye, 100)
+		registerCh := make(chan *protocol.NetworkMessage_Register, 100)
+		announceCh := make(chan *protocol.NetworkMessage_Announce, 100)
+		peerListRequestCh := make(chan *protocol.NetworkMessage_PeerListRequest, 100)
+		channels := Channels{
+			HeartbeatCh:       heartbeatCh,
+			GoodbyeCh:         goodbyeCh,
+			RegisterCh:        registerCh,
+			AnnounceCh:        announceCh,
+			PeerListRequestCh: peerListRequestCh,
+		}
+		t.Channels[conn.RemoteAddr().String()] = channels
 		prouter := prouter.NewMessageRouter(conn)
-		prouter.AddRoute(t.HeartbeatCh, func(msg proto.Message) bool {
+		prouter.AddRoute(heartbeatCh, func(msg proto.Message) bool {
 			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Heartbeat)
 			return ok
 		})
-		prouter.AddRoute(t.GoodbyeCh, func(msg proto.Message) bool {
+		prouter.AddRoute(goodbyeCh, func(msg proto.Message) bool {
 			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Goodbye)
 			return ok
 		})
-		prouter.AddRoute(t.RegisterCh, func(msg proto.Message) bool {
+		prouter.AddRoute(registerCh, func(msg proto.Message) bool {
 			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Register)
 			return ok
 		})
-		prouter.AddRoute(t.AnnounceCh, func(msg proto.Message) bool {
+		prouter.AddRoute(announceCh, func(msg proto.Message) bool {
 			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Announce)
 			return ok
 		})
-		prouter.AddRoute(t.PeerListRequestCh, func(msg proto.Message) bool {
+		prouter.AddRoute(peerListRequestCh, func(msg proto.Message) bool {
 			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_PeerListRequest)
 			return ok
 		})
 
-		remoteAddr := conn.RemoteAddr().String()
-		daemonIP, daemonPort, err := net.SplitHostPort(remoteAddr)
-		if err != nil {
-			t.Logger.Fatal(err)
-			return
-		}
-
 		// Listen for incoming msgs
 		go prouter.Start()
-		go t.handleDaemonMsgs(daemonIP, daemonPort, prouter)
+		go t.handleDaemonMsgs(prouter)
 	}
 }
 
-func (t *Tracker) handleDaemonMsgs(daemonIP, daemonPort string, prouter *prouter.MessageRouter) {
+func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
+	daemonAddr := prouter.Conn.RemoteAddr().String()
+	daemonIP, daemonPort, _ := net.SplitHostPort(prouter.Conn.RemoteAddr().String())
 	t.Logger.Infof("New peer connected: %s:%s\n", daemonIP, daemonPort)
-	daemonAddr := daemonIP + ":" + daemonPort
 	err := t.PeerStore.CreatePeer(daemonIP, daemonPort)
 	if err != nil {
 		t.Logger.Warnf("Error creating peer: %v", err)
@@ -127,7 +127,11 @@ func (t *Tracker) handleDaemonMsgs(daemonIP, daemonPort string, prouter *prouter
 	// Start a timer to track client timeout
 	timeout := time.NewTicker(ClientTimeout * time.Second)
 	defer timeout.Stop()
-
+	channels, exists := t.Channels[daemonAddr]
+	if !exists {
+		t.Logger.Warn("Daemon channels do not existw")
+		return
+	}
 	for {
 		select {
 		// If the client times out, delete the client from the db
@@ -140,29 +144,29 @@ func (t *Tracker) handleDaemonMsgs(daemonIP, daemonPort string, prouter *prouter
 			// prouter.Stop()
 			return
 
-		case heartbeat := <-t.HeartbeatCh:
+		case heartbeat := <-channels.HeartbeatCh:
 			t.Logger.Debugf("Received heartbeat from %s: %v", daemonAddr, heartbeat.Heartbeat)
 			timeout.Reset(ClientTimeout * time.Second)
 
-		case <-t.GoodbyeCh:
+		case <-channels.GoodbyeCh:
 			// Remove the client from db
 			t.PeerStore.DeletePeer(daemonIP, daemonPort)
 			t.Logger.Infof("Peer %s disconnected", daemonAddr)
 			// prouter.Stop()
 			return
 
-		case register := <-t.RegisterCh:
+		case register := <-channels.RegisterCh:
 			clientID := register.Register.GetClientId()
 			// Save the public listener port of the client in DB
 			t.Logger.Debugf("Register message received from connection %s", prouter.Conn.RemoteAddr())
-			t.Logger.Debugf("Received register message from %s: with UUID %s%v", daemonAddr, clientID, register)
+			t.Logger.Debugf("Received register message from %s: with UUID %s: %v", daemonAddr, clientID, register)
 			err := t.PeerStore.RegisterPeer(clientID, daemonIP, daemonPort, register.Register.GetPublicIpAddress(), register.Register.GetListenPort())
 			if err != nil {
 				t.Logger.Fatalf("Error registering client: %v", err)
 			}
-			t.Logger.Debugf("Peer %s registered with public listener port %s with UUID %s", daemonAddr, clientID, register.Register.GetListenPort())
+			t.Logger.Debugf("Peer %s registered with public listener port %s with UUID %s", daemonAddr, register.Register.GetListenPort(), clientID)
 
-		case announce := <-t.AnnounceCh:
+		case announce := <-channels.AnnounceCh:
 			t.Logger.Debugf("Received Announce message from %s: %v", daemonAddr, announce.Announce)
 			files := announce.Announce.GetFiles()
 			for _, file := range files {
@@ -189,7 +193,7 @@ func (t *Tracker) handleDaemonMsgs(daemonIP, daemonPort string, prouter *prouter
 				err = t.PeerStore.AddPeerToSwarm(daemonIP, daemonPort, file.GetFileHash())
 			}
 
-		case peerListRequest := <-t.PeerListRequestCh:
+		case peerListRequest := <-channels.PeerListRequestCh:
 			t.Logger.Debugf("Received peer list request from %s: %v", daemonAddr, peerListRequest.PeerListRequest)
 			fileHash := peerListRequest.PeerListRequest.GetFileHash()
 
