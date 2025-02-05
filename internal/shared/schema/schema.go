@@ -35,6 +35,7 @@ type Peer struct {
 
 type PeerListener struct {
 	ID               uint `gorm:"primaryKey"`
+	PeerConnID       string
 	PeerID           uint `gorm:"not null;foreignKey:PeerID;constraint:OnDelete:CASCADE"`
 	Peer             Peer
 	PublicListenPort string

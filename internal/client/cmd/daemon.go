@@ -2,6 +2,10 @@ package cmd
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
+	"io"
+	"math"
 	"net"
 	"os"
 	"os/signal"
@@ -9,9 +13,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/prouter"
+	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils/logger"
@@ -25,14 +31,15 @@ type Daemon struct {
 
 	TrackerRouter *prouter.MessageRouter
 
-	FileStore *store.FileStore
+	FileStore  *store.FileStore
+	ChunkStore *store.ChunkStore
 
-	LocalAddr        string // Local Peer Listen Addr
-	PublicIP         string
-	PublicListenPort string
-	Mode             string // can be dev or prod
-	IPCSocketIndex   string
-	PendingRequests  map[string]net.Conn
+	LocalAddr               string // Local Peer Listen Addr
+	PublicIP                string
+	PublicListenPort        string
+	Mode                    string // can be dev or prod
+	IPCSocketIndex          string
+	PendingPeerListRequests map[string]chan *protocol.NetworkMessage_PeerListResponse
 
 	Logger *logrus.Logger
 
@@ -48,6 +55,8 @@ func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, l
 		return &Daemon{}, err
 	}
 	fileStore := store.NewFileStore(db)
+	chunkStore := store.NewChunkStore(db)
+
 	logger := logger.NewLogger()
 	conn, err := net.Dial("tcp", trackerAddr)
 	if err != nil {
@@ -66,10 +75,13 @@ func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, l
 	trackerProuter.Start()
 
 	return &Daemon{
-		Ctx:                       ctx,
-		TrackerRouter:             trackerProuter,
-		FileStore:                 fileStore,
-		PendingRequests:           make(map[string]net.Conn),
+		Ctx:           ctx,
+		TrackerRouter: trackerProuter,
+		FileStore:     fileStore,
+		ChunkStore:    chunkStore,
+		// Pending requests maps a file hash with a channel that the listener
+		// will send the messsages to
+		PendingPeerListRequests:   make(map[string]chan *protocol.NetworkMessage_PeerListResponse),
 		IPCSocketIndex:            ipcSocketIndex,
 		LocalAddr:                 localAddr,
 		Mode:                      mode, // Can be dev or prod
@@ -165,12 +177,12 @@ func (d *Daemon) startIPCServer() {
 		})
 
 		go cliRouter.Start()
-		cliAddr := cliConn.RemoteAddr().String()
-		go d.handleCLIMsgs(cliAddr)
+		go d.handleCLIMsgs(cliRouter)
 	}
 }
 
-func (d *Daemon) handleCLIMsgs(cliAddr string) {
+func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
+	cliAddr := msgRouter.Conn.RemoteAddr().String()
 	for {
 		select {
 		case <-d.Ctx.Done():
@@ -178,11 +190,161 @@ func (d *Daemon) handleCLIMsgs(cliAddr string) {
 			return
 		case downloadSignal := <-d.CLISignalDownloadCh:
 			d.Logger.Debugf("Received a new Download Signal from %s: %v", cliAddr, downloadSignal)
-			d.Logger.Warn("START THE DOWNLOAD PROCESS ")
-			// START THE DOWNLOAD PROCESS
+			fileHash := downloadSignal.SignalDownload.GetFileHash()
+			peerListReqMsg := &protocol.NetworkMessage{
+				MessageType: &protocol.NetworkMessage_PeerListRequest{
+					PeerListRequest: &protocol.PeerListRequest{
+						FileHash: fileHash,
+					},
+				},
+			}
+			channel, exists := d.PendingPeerListRequests[fileHash]
+			if !exists {
+				channel = make(chan *protocol.NetworkMessage_PeerListResponse, 100)
+				d.PendingPeerListRequests[fileHash] = channel
+			}
+
+			err := d.TrackerRouter.WriteMessage(peerListReqMsg)
+			if err != nil {
+				d.Logger.Warnf("Error sending message to Tracker: %v", err)
+			}
+
+			select {
+			case peerListResponse := <-channel:
+				d.Logger.Debugf("Received peer list response from tracker using a channel: %v", peerListResponse)
+				if fileHash != peerListResponse.PeerListResponse.GetFileHash() {
+					d.Logger.Warnf("Response file hash does not match requested file hash, response: %s requested: %s",
+						peerListResponse.PeerListResponse.GetFileHash(), fileHash)
+					continue
+				}
+				peers := peerListResponse.PeerListResponse.GetPeers()
+				d.Logger.Debugf("Received peer list %+v", peers)
+
+				fileInfo, err := d.FileStore.GetFileByHash(fileHash)
+				if err != nil {
+					d.Logger.Warnf("Error getting file info: %v", err)
+					continue
+				}
+
+				chunksMap := make([]int32, fileInfo.TotalChunks)
+				fileChunks, err := d.FileStore.GetChunks(fileHash)
+				if err != nil {
+					d.Logger.Warnf("Error getting chunks: %v ", err)
+					continue
+				}
+				for _, chunk := range fileChunks {
+					chunksMap[chunk.Index] = 1
+				}
+			case <-time.After(10 * time.Second):
+				d.Logger.Warn("Timeout waiting for peer list response")
+				continue
+			}
+
 		case registerSignal := <-d.CLISignalRegisterCh:
+			filePath := registerSignal.SignalRegister.GetFilePath()
 			d.Logger.Debugf("Received a new Register Signal from %s: %v", cliAddr, registerSignal)
-			// START THE REGISTER PROCESS
+			file, err := os.Open(filePath)
+			if err != nil {
+				d.Logger.Warnf("Error opening file: %v", err)
+				return
+			}
+			defer file.Close()
+
+			fileName := strings.Split(file.Name(), "/")[len(strings.Split(file.Name(), "/"))-1]
+			fileInfo, err := file.Stat()
+			if err != nil {
+				d.Logger.Warnf("Error getting file info: %v", err)
+				return
+			}
+			fileSize := fileInfo.Size()
+			fileTotalChunks := int((fileSize + maxChunkSize - 1) / maxChunkSize)
+			hash := sha256.New()
+			if _, err := io.Copy(hash, file); err != nil {
+				d.Logger.Warnf("Error copying file hash to hash: %v", err)
+				return
+			}
+			fileHash := fmt.Sprintf("%x", hash.Sum(nil))
+
+			schemaFile := schema.File{
+				Size:         fileSize,
+				MaxChunkSize: maxChunkSize,
+				TotalChunks:  fileTotalChunks,
+				Hash:         fileHash,
+				CreatedAt:    time.Now().Unix(),
+			}
+			// log the stats of the file
+			d.Logger.Debugf("file: %s with size %d and hash %s\n", fileName, fileSize, fileHash)
+			created, err := d.FileStore.CreateFile(&schemaFile)
+			if !created {
+				d.Logger.Info("file already registered with tracker")
+				return
+			}
+			if err != nil {
+				d.Logger.Warnf("Error creating file: %v", err)
+				return
+			}
+
+			d.Logger.Info("Attempting to create chunks with metadata...")
+
+			buffer := make([]byte, maxChunkSize)
+			chunkIndex := 0
+			file.Seek(0, 0)
+			for {
+				n, err := file.Read(buffer)
+				if err != nil && err != io.EOF {
+					d.Logger.Warnf("Error reading buffer: %v", err)
+					return
+				}
+				if n == 0 {
+					break
+				}
+
+				hash := generateHash(buffer[:n])
+				err = d.ChunkStore.CreateChunk(&schemaFile, n, chunkIndex, hash, false)
+				if err != nil {
+					d.Logger.Warnf("Error creating chunk: %v", err)
+					return
+				}
+				d.Logger.Debugf("chunk %d: %s with size %d\n", chunkIndex, hash, n)
+				chunkIndex++
+			}
+
+			// copy the file to downlaoads/complete
+			downloadDirPath := fmt.Sprintf("downloads/daemon-%s/", d.IPCSocketIndex)
+			err = os.MkdirAll(downloadDirPath, os.ModePerm)
+			if err != nil {
+				d.Logger.Warnf("Error creating directory: %v", err)
+				return
+			}
+
+			createdFile, err := os.Create(downloadDirPath + fileName)
+			if err != nil {
+				d.Logger.Warnf("Error creating file: %v", err)
+				return
+			}
+			defer createdFile.Close()
+
+			file.Seek(0, 0)
+			_, err = io.Copy(createdFile, file)
+			if err != nil {
+				d.Logger.Warnf("Error copying file: %v", err)
+				return
+			}
+
+			// send announce message to tracker to tell it to add the file
+			d.Logger.Infof("Preparing to send Announce message to Tracker with newly created file")
+
+			fileInfoMsgs := make([]*protocol.FileInfo, 0)
+			fileInfoMsgs = append(fileInfoMsgs, &protocol.FileInfo{
+				FileSize:    schemaFile.Size,
+				ChunkSize:   int32(schemaFile.MaxChunkSize),
+				FileHash:    schemaFile.Hash,
+				TotalChunks: int32(schemaFile.TotalChunks),
+			})
+
+			// announceMsg := &protocol.AnnounceMessage{
+			// 	Files: fileInfoMsgs,
+			// }
 			d.Logger.Warn("START THE REGISTER PROCESS ")
 		}
 	}
@@ -197,55 +359,29 @@ func (d *Daemon) handleTrackerMsgs() {
 			return
 		case peerlistResponse := <-d.TrackerPeerListResponseCh:
 			d.Logger.Debugf("Received peer list response from tracker: %+v", peerlistResponse.PeerListResponse)
-			cliConn, exists := d.PendingRequests[peerlistResponse.PeerListResponse.GetFileHash()]
+			channel, exists := d.PendingPeerListRequests[peerlistResponse.PeerListResponse.GetFileHash()]
 			if !exists {
 				d.Logger.Warnf("No Requests for file hash: %s", peerlistResponse.PeerListResponse.GetFileHash())
 			}
-			delete(d.PendingRequests, peerlistResponse.PeerListResponse.GetFileHash())
 
-			netMsg := &protocol.NetworkMessage{
-				MessageType: &protocol.NetworkMessage_PeerListResponse{
-					PeerListResponse: peerlistResponse.PeerListResponse,
-				},
+			responseMsg := &protocol.NetworkMessage_PeerListResponse{
+				PeerListResponse: peerlistResponse.PeerListResponse,
 			}
 
-			err := utils.SendNetMsg(cliConn, netMsg)
-			if err != nil {
-				d.Logger.Warnf("Error sending message back to daemon: %v", err)
-			}
+			channel <- responseMsg
 			d.Logger.Info("Sent peer list response to CLI")
 		}
 	}
 }
 
-// func (d *Daemon) listenPeerConn() {
-// 	listen, err := net.Listen("tcp", d.LocalAddr)
-// 	if err != nil {
-// 		d.Logger.Fatalf("Error starting Peer TCP listener: %+v", err)
-// 		return
-// 	}
-// 	defer listen.Close()
-
-// 	d.Logger.Infof("Listening for peers on addr: %s", d.LocalAddr)
-
-// 	for {
-// 		conn, err := listen.Accept()
-// 		if err != nil {
-// 			d.Logger.Warnf("Error accepting connection: %+v", err)
-// 			continue
-// 		}
-// 		// Listen for incoming msgs
-// 		go d.handlePeerMsgs(conn)
-// 	}
-// }
-
 func (d *Daemon) initConnMsgs() {
 	// Send a Register message to the tracker so that the tracker can save our public listneer port
 	// Send the daemon port if running as development
 	// Hit a STUN server and send the public port if running as production
+
 	d.Logger.Info("Sending Register message to Tracker")
 	d.PublicListenPort = strings.Split(d.LocalAddr, ":")[1]
-	d.PublicIP = "localhost"
+	d.PublicIP = "::1"
 	if d.Mode == "prod" {
 		// Hit a STUN server and get the public port
 		// TODO: Implement this
@@ -253,18 +389,31 @@ func (d *Daemon) initConnMsgs() {
 	}
 	// Send a Register message to the tracker the first time we connect
 	// The tracker will register our public IP:PORT
+	maxRetries := 3
 	registerMsg := &protocol.RegisterMessage{
 		PublicIpAddress: d.PublicIP,
 		ListenPort:      d.PublicListenPort,
+		ClientId:        uuid.New().String(),
 	}
-	netMsg := &protocol.NetworkMessage{
-		MessageType: &protocol.NetworkMessage_Register{
-			Register: registerMsg,
-		},
-	}
-	err := d.TrackerRouter.WriteMessage(netMsg)
-	if err != nil {
-		d.Logger.Warnf("Error sending message to Tracker: %v", err)
+
+	for i := 0; i < maxRetries; i++ {
+		netMsg := &protocol.NetworkMessage{
+			MessageType: &protocol.NetworkMessage_Register{
+				Register: registerMsg,
+			},
+		}
+
+		// err := d.TrackerRouter.WriteMessage(netMsg)
+		// if err == nil {
+		// 	break
+		// }
+		err := utils.SendNetMsg(d.TrackerRouter.Conn, netMsg)
+		if err == nil {
+			break
+		}
+
+		d.Logger.Warnf("Registration attempt %d failed: %v", i+1, err)
+		time.Sleep(time.Duration(math.Pow(2, float64(i))) * time.Second)
 	}
 	d.Logger.Debugf("Sent Register message to Tracker: %+v", registerMsg)
 
