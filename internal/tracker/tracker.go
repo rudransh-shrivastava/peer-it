@@ -26,6 +26,8 @@ type Tracker struct {
 
 	Logger   *logrus.Logger
 	Channels map[string]Channels
+
+	DaemonRouters map[string]*prouter.MessageRouter
 }
 
 type Channels struct {
@@ -33,6 +35,7 @@ type Channels struct {
 	GoodbyeCh         chan *protocol.NetworkMessage_Goodbye
 	AnnounceCh        chan *protocol.NetworkMessage_Announce
 	PeerListRequestCh chan *protocol.NetworkMessage_PeerListRequest
+	SignalingCh       chan *protocol.NetworkMessage_Signaling
 }
 
 func NewTracker() *Tracker {
@@ -47,11 +50,12 @@ func NewTracker() *Tracker {
 	chunkStore := store.NewChunkStore(db)
 
 	return &Tracker{
-		PeerStore:  peerStore,
-		FileStore:  fileStore,
-		ChunkStore: chunkStore,
-		Logger:     logger,
-		Channels:   make(map[string]Channels),
+		PeerStore:     peerStore,
+		FileStore:     fileStore,
+		ChunkStore:    chunkStore,
+		Logger:        logger,
+		Channels:      make(map[string]Channels),
+		DaemonRouters: make(map[string]*prouter.MessageRouter),
 	}
 }
 
@@ -77,11 +81,13 @@ func (t *Tracker) Start() {
 		goodbyeCh := make(chan *protocol.NetworkMessage_Goodbye, 100)
 		announceCh := make(chan *protocol.NetworkMessage_Announce, 100)
 		peerListRequestCh := make(chan *protocol.NetworkMessage_PeerListRequest, 100)
+		signalingCh := make(chan *protocol.NetworkMessage_Signaling, 100)
 		channels := Channels{
 			HeartbeatCh:       heartbeatCh,
 			GoodbyeCh:         goodbyeCh,
 			AnnounceCh:        announceCh,
 			PeerListRequestCh: peerListRequestCh,
+			SignalingCh:       signalingCh,
 		}
 		t.Channels[conn.RemoteAddr().String()] = channels
 		prouter := prouter.NewMessageRouter(conn)
@@ -99,6 +105,10 @@ func (t *Tracker) Start() {
 		})
 		prouter.AddRoute(peerListRequestCh, func(msg proto.Message) bool {
 			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_PeerListRequest)
+			return ok
+		})
+		prouter.AddRoute(signalingCh, func(msg proto.Message) bool {
+			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Signaling)
 			return ok
 		})
 
@@ -128,6 +138,8 @@ func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
 		return
 	}
 
+	t.DaemonRouters[daemonId] = prouter
+
 	// Start a timer to track client timeout
 	timeout := time.NewTicker(ClientTimeout * time.Second)
 	defer timeout.Stop()
@@ -144,12 +156,34 @@ func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
 		// If the client times out, delete the client from the db
 		case <-timeout.C:
 			t.Logger.Infof("Peer %s timed out, deleting \n", daemonAddr)
+			delete(t.DaemonRouters, daemonId) // remove if issue occur
 			err := t.PeerStore.DeletePeer(daemonIP, daemonPort)
 			if err != nil {
 				t.Logger.Warnf("Error deleting peer: %v", err)
 			}
-			// prouter.Stop()
 			return
+
+		case signalingMsg := <-channels.SignalingCh:
+			t.Logger.Debugf("Received a signal from %s: %v", daemonAddr, signalingMsg.Signaling)
+			targetPeerId := signalingMsg.Signaling.GetTargetPeerId()
+			forwardMsg := &protocol.NetworkMessage{
+				MessageType: &protocol.NetworkMessage_Signaling{
+					Signaling: &protocol.SignalingMessage{
+						SourcePeerId: daemonId,
+						TargetPeerId: targetPeerId,
+						Message:      signalingMsg.Signaling.GetMessage(),
+					},
+				},
+			}
+
+			if targetRouter, exists := t.DaemonRouters[targetPeerId]; exists {
+				t.Logger.Debugf("Attempting to forward msg from %s to %s: %v", signalingMsg.Signaling.GetSourcePeerId(), signalingMsg.Signaling.GetTargetPeerId(), signalingMsg.Signaling)
+
+				err = targetRouter.WriteMessage(forwardMsg)
+				if err != nil {
+					t.Logger.Warnf("Error forwarding signaling message: %v", err)
+				}
+			}
 
 		case heartbeat := <-channels.HeartbeatCh:
 			t.Logger.Debugf("Received heartbeat from %s: %v", daemonAddr, heartbeat.Heartbeat)

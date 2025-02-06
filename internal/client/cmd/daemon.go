@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -12,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pion/webrtc/v3"
 	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/prouter"
@@ -24,8 +26,8 @@ import (
 )
 
 type Daemon struct {
-	ID  string
 	Ctx context.Context
+	ID  string
 
 	TrackerRouter *prouter.MessageRouter
 
@@ -33,8 +35,6 @@ type Daemon struct {
 	ChunkStore *store.ChunkStore
 
 	LocalAddr               string // Local Peer Listen Addr
-	PublicIP                string
-	PublicListenPort        string
 	Mode                    string // can be dev or prod
 	IPCSocketIndex          string
 	PendingPeerListRequests map[string]chan *protocol.NetworkMessage_PeerListResponse
@@ -43,9 +43,12 @@ type Daemon struct {
 
 	TrackerPeerListResponseCh chan *protocol.NetworkMessage_PeerListResponse
 	TrackerIdMessageCh        chan *protocol.NetworkMessage_Id
+	TrackerSignalingCh        chan *protocol.NetworkMessage_Signaling
 
 	CLISignalRegisterCh chan *protocol.NetworkMessage_SignalRegister
 	CLISignalDownloadCh chan *protocol.NetworkMessage_SignalDownload
+
+	PeerConnections map[string]*webrtc.PeerConnection
 }
 
 func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, localAddr string, mode string) (*Daemon, error) {
@@ -64,6 +67,7 @@ func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, l
 
 	peerListResponseCh := make(chan *protocol.NetworkMessage_PeerListResponse, 100)
 	idMessageCh := make(chan *protocol.NetworkMessage_Id, 100)
+	signalingMsgCh := make(chan *protocol.NetworkMessage_Signaling, 100)
 
 	signalRegisterCh := make(chan *protocol.NetworkMessage_SignalRegister, 100)
 	signalDownloadCh := make(chan *protocol.NetworkMessage_SignalDownload, 100)
@@ -77,6 +81,11 @@ func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, l
 		_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Id)
 		return ok
 	})
+	trackerProuter.AddRoute(signalingMsgCh, func(msg proto.Message) bool {
+		_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Signaling)
+		return ok
+	})
+
 	trackerProuter.Start()
 
 	return &Daemon{
@@ -93,8 +102,10 @@ func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, l
 		Logger:                    logger,
 		TrackerPeerListResponseCh: peerListResponseCh,
 		TrackerIdMessageCh:        idMessageCh,
+		TrackerSignalingCh:        signalingMsgCh,
 		CLISignalRegisterCh:       signalRegisterCh,
 		CLISignalDownloadCh:       signalDownloadCh,
+		PeerConnections:           make(map[string]*webrtc.PeerConnection),
 	}, nil
 }
 
@@ -146,7 +157,7 @@ func (d *Daemon) startDaemon() {
 	go d.startIPCServer()
 	go d.handleTrackerMsgs()
 
-	d.initConnMsgs()
+	d.initDaemon()
 
 	d.Logger.Infof("Daemon ready, running on %s", d.LocalAddr)
 
@@ -213,6 +224,21 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 			if err != nil {
 				d.Logger.Warnf("Error sending message to Tracker: %v", err)
 			}
+			// WebRTC configuration
+			config := webrtc.Configuration{
+				ICEServers: []webrtc.ICEServer{
+					{
+						URLs: []string{
+							"stun:stun.l.google.com:19302",
+							"stun:stun1.l.google.com:19302",
+							"stun:stun2.l.google.com:19302",
+							"stun:stun3.l.google.com:19302",
+							"stun:stun4.l.google.com:19302",
+						},
+					},
+				},
+				ICETransportPolicy: webrtc.ICETransportPolicyAll,
+			}
 
 			select {
 			case peerListResponse := <-channel:
@@ -224,22 +250,49 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 				}
 				peers := peerListResponse.PeerListResponse.GetPeers()
 				d.Logger.Debugf("Received peer list %+v", peers)
+				for _, peer := range peers {
+					peerID := peer.GetId()
+					d.Logger.Debugf("Setting up WebRTC connection with peer: %s", peerID)
 
-				// fileInfo, err := d.FileStore.GetFileByHash(fileHash)
-				// if err != nil {
-				// 	d.Logger.Warnf("Error getting file info: %v", err)
-				// 	continue
-				// }
+					err := d.handleWebRTCConnection(peerID, config)
+					if err != nil {
+						d.Logger.Warnf("Failed to setup WebRTC connection: %v", err)
+						continue
+					}
 
-				// chunksMap := make([]int32, fileInfo.TotalChunks)
-				// fileChunks, err := d.FileStore.GetChunks(fileHash)
-				// if err != nil {
-				// 	d.Logger.Warnf("Error getting chunks: %v ", err)
-				// 	continue
-				// }
-				// for _, chunk := range fileChunks {
-				// 	chunksMap[chunk.Index] = 1
-				// }
+					// Create and send offer
+					peerConnection := d.PeerConnections[peerID]
+
+					offer, err := peerConnection.CreateOffer(nil)
+					if err != nil {
+						d.Logger.Warnf("Failed to create offer: %v", err)
+						continue
+					}
+
+					err = peerConnection.SetLocalDescription(offer)
+					if err != nil {
+						d.Logger.Warnf("Failed to set local description: %v", err)
+						continue
+					}
+
+					// Send offer through tracker
+					signalingMsg := &protocol.NetworkMessage{
+						MessageType: &protocol.NetworkMessage_Signaling{
+							Signaling: &protocol.SignalingMessage{
+								TargetPeerId: peerID,
+								Message: &protocol.SignalingMessage_Offer{
+									Offer: &protocol.Offer{
+										Sdp: offer.SDP,
+									},
+								},
+							},
+						},
+					}
+					err = d.TrackerRouter.WriteMessage(signalingMsg)
+					if err != nil {
+						d.Logger.Warnf("Failed to send offer: %v", err)
+					}
+				}
 
 			case <-time.After(10 * time.Second):
 				d.Logger.Warn("Timeout waiting for peer list response")
@@ -363,6 +416,109 @@ func (d *Daemon) handleTrackerMsgs() {
 		case <-d.Ctx.Done():
 			d.Logger.Info("Stopping the tracker message listener")
 			return
+		case signalingMsg := <-d.TrackerSignalingCh:
+			d.Logger.Debugf("Received signaling message")
+
+			peerID := signalingMsg.Signaling.GetSourcePeerId()
+			pc, exists := d.PeerConnections[peerID]
+
+			if !exists {
+				// If we don't have a connection yet and this is an offer, create one
+				if offer := signalingMsg.Signaling.GetOffer(); offer != nil {
+					config := webrtc.Configuration{
+						ICEServers: []webrtc.ICEServer{
+							{
+								URLs: []string{
+									"stun:stun.l.google.com:19302",
+									"stun:stun1.l.google.com:19302",
+									"stun:stun2.l.google.com:19302",
+									"stun:stun3.l.google.com:19302",
+									"stun:stun4.l.google.com:19302",
+								},
+							},
+						},
+					}
+
+					err := d.handleWebRTCConnection(peerID, config)
+					if err != nil {
+						d.Logger.Warnf("Failed to create peer connection: %v", err)
+						continue
+					}
+					pc = d.PeerConnections[peerID]
+				} else {
+					d.Logger.Warn("Received signaling message for unknown peer")
+					continue
+				}
+			}
+
+			switch {
+			case signalingMsg.Signaling.GetOffer() != nil:
+				offer := signalingMsg.Signaling.GetOffer()
+
+				err := pc.SetRemoteDescription(webrtc.SessionDescription{
+					Type: webrtc.SDPTypeOffer,
+					SDP:  offer.GetSdp(),
+				})
+				if err != nil {
+					d.Logger.Warnf("Failed to set remote description: %v", err)
+					continue
+				}
+
+				answer, err := pc.CreateAnswer(nil)
+				if err != nil {
+					d.Logger.Warnf("Failed to create answer: %v", err)
+					continue
+				}
+
+				err = pc.SetLocalDescription(answer)
+				if err != nil {
+					d.Logger.Warnf("Failed to set local description: %v", err)
+					continue
+				}
+
+				answerMsg := &protocol.NetworkMessage{
+					MessageType: &protocol.NetworkMessage_Signaling{
+						Signaling: &protocol.SignalingMessage{
+							TargetPeerId: peerID,
+							Message: &protocol.SignalingMessage_Answer{
+								Answer: &protocol.Answer{
+									Sdp: answer.SDP,
+								},
+							},
+						},
+					},
+				}
+
+				err = d.TrackerRouter.WriteMessage(answerMsg)
+				if err != nil {
+					d.Logger.Warnf("Failed to send answer: %v", err)
+				}
+
+			case signalingMsg.Signaling.GetAnswer() != nil:
+				answer := signalingMsg.Signaling.GetAnswer()
+
+				err := pc.SetRemoteDescription(webrtc.SessionDescription{
+					Type: webrtc.SDPTypeAnswer,
+					SDP:  answer.GetSdp(),
+				})
+				if err != nil {
+					d.Logger.Warnf("Failed to set remote description: %v", err)
+				}
+
+			case signalingMsg.Signaling.GetIceCandidate() != nil:
+				ice := signalingMsg.Signaling.GetIceCandidate()
+
+				var sdpmlineIndex = uint16(ice.GetSdpMlineIndex())
+				err := pc.AddICECandidate(webrtc.ICECandidateInit{
+					Candidate:     ice.GetCandidate(),
+					SDPMid:        &ice.SdpMid,
+					SDPMLineIndex: &sdpmlineIndex,
+				})
+				if err != nil {
+					d.Logger.Warnf("Failed to add ICE candidate: %v", err)
+				}
+			}
+
 		case peerlistResponse := <-d.TrackerPeerListResponseCh:
 			d.Logger.Debugf("Received peer list response from tracker: %+v", peerlistResponse.PeerListResponse)
 			channel, exists := d.PendingPeerListRequests[peerlistResponse.PeerListResponse.GetFileHash()]
@@ -383,13 +539,70 @@ func (d *Daemon) handleTrackerMsgs() {
 	}
 }
 
-func (d *Daemon) initConnMsgs() {
-	// Send the daemon port if running as development
-	// Hit a STUN server and send the public port if running as production
+func (d *Daemon) handleWebRTCConnection(peerId string, config webrtc.Configuration) error {
+	peerConnection, err := webrtc.NewPeerConnection(config)
+	if err != nil {
+		return fmt.Errorf("failed to create peer connection: %v", err)
+	}
 
-	d.PublicListenPort = strings.Split(d.LocalAddr, ":")[1]
-	d.PublicIP = "::1"
+	d.PeerConnections[peerId] = peerConnection
 
+	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
+		d.Logger.Infof("ICE Connection State has changed: %s", connectionState.String())
+	})
+
+	protocolName := "file-transfer"
+	dataChannelConfig := &webrtc.DataChannelInit{
+		Ordered:        &[]bool{true}[0], // Ensure ordered delivery
+		MaxRetransmits: nil,              // Unlimited retransmissions
+		Protocol:       &protocolName,
+	}
+
+	dataChannel, err := peerConnection.CreateDataChannel("data", dataChannelConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create data channel: %v", err)
+	}
+	dataChannel.OnOpen(func() {
+		d.Logger.Infof("Data channel '%s'-'%d' open", dataChannel.Label(), dataChannel.ID())
+	})
+	dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+		d.Logger.Infof("Message from DataChannel '%s': '%s'", dataChannel.Label(), string(msg.Data))
+	})
+
+	peerConnection.OnICECandidate(func(ice *webrtc.ICECandidate) {
+		if ice != nil {
+			_, err := json.Marshal(ice.ToJSON())
+			if err != nil {
+				d.Logger.Warnf("Failed to marshal ICE candidate: %v", err)
+				return
+			}
+
+			signalingMsg := &protocol.NetworkMessage{
+				MessageType: &protocol.NetworkMessage_Signaling{
+					Signaling: &protocol.SignalingMessage{
+						TargetPeerId: peerId,
+						Message: &protocol.SignalingMessage_IceCandidate{
+							IceCandidate: &protocol.IceCandidate{
+								Candidate:     ice.ToJSON().Candidate,
+								SdpMid:        *ice.ToJSON().SDPMid,
+								SdpMlineIndex: uint32(*ice.ToJSON().SDPMLineIndex),
+							},
+						},
+					},
+				},
+			}
+
+			err = d.TrackerRouter.WriteMessage(signalingMsg)
+			if err != nil {
+				d.Logger.Warnf("Failed to send ICE candidate: %v", err)
+			}
+		}
+	})
+
+	return nil
+}
+
+func (d *Daemon) initDaemon() {
 	// Send an Announce message to the tracker the first time we connect
 	files, err := d.FileStore.GetFiles()
 	if err != nil {

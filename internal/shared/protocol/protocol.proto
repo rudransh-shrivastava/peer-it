@@ -88,10 +88,12 @@ message SignalDownloadMessage {
 
 // WebRTC connection messages
 message SignalingMessage {
+  string source_peer_id = 1;
+  string target_peer_id = 2;
   oneof message {
-    Offer offer = 1;
-    Answer answer = 2;
-    IceCandidate ice_candidate = 3;
+    Offer offer = 3;
+    Answer answer = 4;
+    IceCandidate ice_candidate = 5;
   }
 }
 
@@ -105,8 +107,8 @@ message Answer {
 
 message IceCandidate {
   string candidate = 1;
-  string sdpMid = 2;
-  int32 sdpMLineIndex = 3;
+  string sdp_mid = 2;
+  uint32 sdp_mline_index = 3;
 }
 
 message IDMessage {
