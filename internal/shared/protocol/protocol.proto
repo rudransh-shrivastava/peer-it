@@ -11,12 +11,12 @@ message NetworkMessage {
         PeerListResponse peer_list_response = 3;
         HeartbeatMessage heartbeat = 4;
         GoodbyeMessage goodbye = 5;
-        RegisterMessage register = 6;
-        ChunkRequest chunk_request = 7;
-        ChunkResponse chunk_response = 8;
-        IntroductionMessage introduction = 9;
-        SignalRegisterMessage signal_register = 10;
-        SignalDownloadMessage signal_download = 11;
+        ChunkRequest chunk_request = 6;
+        ChunkResponse chunk_response = 7;
+        IntroductionMessage introduction = 8;
+        SignalRegisterMessage signal_register = 9;
+        SignalDownloadMessage signal_download = 10;
+        SignalingMessage signaling = 11;
     }
 }
 
@@ -43,11 +43,6 @@ message HeartbeatMessage {
 // If recieved by anyone, delete that peer from the peer list
 message GoodbyeMessage {}
 
-message RegisterMessage {
-    string public_ip_address = 1;
-    string listen_port = 2;
-}
-
 // Peer to Peer Msgs
 
 message ChunkRequest {
@@ -72,8 +67,7 @@ message IntroductionMessage {
 
 // Helper Msgs
 message PeerInfo {
-    string ip_address = 1;
-    string port = 2;
+    string id = 1;
 }
 
 message FileInfo {
@@ -89,4 +83,27 @@ message SignalRegisterMessage {
 
 message SignalDownloadMessage {
     string file_hash = 1;
+}
+
+// WebRTC connection messages
+message SignalingMessage {
+  oneof message {
+    Offer offer = 1;
+    Answer answer = 2;
+    IceCandidate ice_candidate = 3;
+  }
+}
+
+message Offer {
+  string sdp = 1;
+}
+
+message Answer {
+  string sdp = 1;
+}
+
+message IceCandidate {
+  string candidate = 1;
+  string sdpMid = 2;
+  int32 sdpMLineIndex = 3;
 }

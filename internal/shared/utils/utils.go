@@ -10,18 +10,6 @@ import (
 )
 
 // TODO: make generic
-func SendRegisterMsg(conn net.Conn, msg *protocol.RegisterMessage) error {
-	netMsg := &protocol.NetworkMessage{
-		MessageType: &protocol.NetworkMessage_Register{
-			Register: msg,
-		},
-	}
-	err := SendNetMsg(conn, netMsg)
-	if err != nil {
-		return err
-	}
-	return nil
-}
 
 func SendAnnounceMsg(conn net.Conn, msg *protocol.AnnounceMessage) error {
 	netMsg := &protocol.NetworkMessage{

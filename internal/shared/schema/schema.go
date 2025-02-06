@@ -33,14 +33,6 @@ type Peer struct {
 	Port      string
 }
 
-type PeerListener struct {
-	ID               uint `gorm:"primaryKey"`
-	PeerID           uint `gorm:"not null;foreignKey:PeerID;constraint:OnDelete:CASCADE"`
-	Peer             Peer
-	PublicListenPort string
-	PublicIpAddress  string
-}
-
 // Relation between peers and files
 type Swarm struct {
 	ID     uint `gorm:"primaryKey"`

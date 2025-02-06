@@ -2,6 +2,7 @@ package tracker
 
 import (
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
@@ -30,7 +31,6 @@ type Tracker struct {
 type Channels struct {
 	HeartbeatCh       chan *protocol.NetworkMessage_Heartbeat
 	GoodbyeCh         chan *protocol.NetworkMessage_Goodbye
-	RegisterCh        chan *protocol.NetworkMessage_Register
 	AnnounceCh        chan *protocol.NetworkMessage_Announce
 	PeerListRequestCh chan *protocol.NetworkMessage_PeerListRequest
 }
@@ -75,13 +75,11 @@ func (t *Tracker) Start() {
 		// Setup prouter
 		heartbeatCh := make(chan *protocol.NetworkMessage_Heartbeat, 100)
 		goodbyeCh := make(chan *protocol.NetworkMessage_Goodbye, 100)
-		registerCh := make(chan *protocol.NetworkMessage_Register, 100)
 		announceCh := make(chan *protocol.NetworkMessage_Announce, 100)
 		peerListRequestCh := make(chan *protocol.NetworkMessage_PeerListRequest, 100)
 		channels := Channels{
 			HeartbeatCh:       heartbeatCh,
 			GoodbyeCh:         goodbyeCh,
-			RegisterCh:        registerCh,
 			AnnounceCh:        announceCh,
 			PeerListRequestCh: peerListRequestCh,
 		}
@@ -93,10 +91,6 @@ func (t *Tracker) Start() {
 		})
 		prouter.AddRoute(goodbyeCh, func(msg proto.Message) bool {
 			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Goodbye)
-			return ok
-		})
-		prouter.AddRoute(registerCh, func(msg proto.Message) bool {
-			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Register)
 			return ok
 		})
 		prouter.AddRoute(announceCh, func(msg proto.Message) bool {
@@ -155,16 +149,6 @@ func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
 			// prouter.Stop()
 			return
 
-		case register := <-channels.RegisterCh:
-			// Save the public listener port of the client in DB
-			t.Logger.Debugf("Register message received from connection %s", prouter.Conn.RemoteAddr())
-			t.Logger.Debugf("Received register message from %s: %v", daemonAddr, register)
-			err := t.PeerStore.RegisterPeer(daemonIP, daemonPort, register.Register.GetPublicIpAddress(), register.Register.GetListenPort())
-			if err != nil {
-				t.Logger.Fatalf("Error registering client: %v", err)
-			}
-			t.Logger.Debugf("Peer %s registered with public listener port %s", daemonAddr, register.Register.GetListenPort())
-
 		case announce := <-channels.AnnounceCh:
 			t.Logger.Debugf("Received Announce message from %s: %v", daemonAddr, announce.Announce)
 			files := announce.Announce.GetFiles()
@@ -209,15 +193,8 @@ func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
 					continue
 				}
 
-				publicIPAddr, publicListenPort, err := t.PeerStore.FindPublicListenPort(peer.IPAddress, peer.Port)
-				if err != nil {
-					t.Logger.Warnf("Error finding public listen port: %v", err)
-					continue
-				}
-				t.Logger.Debugf("Got public IP:PORT for %+v from db %s:%s", peer, publicIPAddr, publicListenPort)
 				peers = append(peers, &protocol.PeerInfo{
-					IpAddress: publicIPAddr,
-					Port:      publicListenPort,
+					Id: strconv.Itoa(int(peer.ID)),
 				})
 			}
 			peerListResponse := &protocol.PeerListResponse{

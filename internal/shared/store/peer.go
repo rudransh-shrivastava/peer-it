@@ -63,30 +63,3 @@ func (ps *PeerStore) GetPeersByFileHash(fileHash string) ([]schema.Peer, error) 
 	}
 	return peers, nil
 }
-
-func (ps *PeerStore) RegisterPeer(ip, port, publicIPAddr, publicListenPort string) error {
-	peer := &schema.Peer{}
-	err := ps.DB.First(&peer, "ip_address = ? AND port = ?", ip, port).Error
-	if err != nil {
-		return err
-	}
-	peerListner := &schema.PeerListener{
-		Peer:             *peer,
-		PublicListenPort: publicListenPort,
-		PublicIpAddress:  publicIPAddr,
-	}
-	return ps.DB.Create(&peerListner).Error
-}
-
-func (ps *PeerStore) FindPublicListenPort(ip, port string) (string, string, error) {
-	peer := &schema.Peer{}
-	err := ps.DB.First(&peer, "ip_address = ? AND port = ?", ip, port).Error
-	if err != nil {
-		return "", "", err
-	}
-	peerListener := &schema.PeerListener{}
-	err = ps.DB.First(&peerListener, "peer_id = ?", peer.ID).Error
-	return peerListener.PublicIpAddress, peerListener.PublicListenPort, nil
-}
-
-// TODO: implement joins instead of searching in the db

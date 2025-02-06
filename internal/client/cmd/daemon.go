@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"math"
 	"net"
 	"os"
 	"os/signal"
@@ -18,7 +17,6 @@ import (
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/prouter"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
-	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils/logger"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -138,7 +136,6 @@ func (d *Daemon) startDaemon() {
 
 	go d.startIPCServer()
 	go d.handleTrackerMsgs()
-	// go d.listenPeerConn()
 
 	d.initConnMsgs()
 
@@ -219,21 +216,22 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 				peers := peerListResponse.PeerListResponse.GetPeers()
 				d.Logger.Debugf("Received peer list %+v", peers)
 
-				fileInfo, err := d.FileStore.GetFileByHash(fileHash)
-				if err != nil {
-					d.Logger.Warnf("Error getting file info: %v", err)
-					continue
-				}
+				// fileInfo, err := d.FileStore.GetFileByHash(fileHash)
+				// if err != nil {
+				// 	d.Logger.Warnf("Error getting file info: %v", err)
+				// 	continue
+				// }
 
-				chunksMap := make([]int32, fileInfo.TotalChunks)
-				fileChunks, err := d.FileStore.GetChunks(fileHash)
-				if err != nil {
-					d.Logger.Warnf("Error getting chunks: %v ", err)
-					continue
-				}
-				for _, chunk := range fileChunks {
-					chunksMap[chunk.Index] = 1
-				}
+				// chunksMap := make([]int32, fileInfo.TotalChunks)
+				// fileChunks, err := d.FileStore.GetChunks(fileHash)
+				// if err != nil {
+				// 	d.Logger.Warnf("Error getting chunks: %v ", err)
+				// 	continue
+				// }
+				// for _, chunk := range fileChunks {
+				// 	chunksMap[chunk.Index] = 1
+				// }
+
 			case <-time.After(10 * time.Second):
 				d.Logger.Warn("Timeout waiting for peer list response")
 				continue
@@ -374,46 +372,11 @@ func (d *Daemon) handleTrackerMsgs() {
 }
 
 func (d *Daemon) initConnMsgs() {
-	// Send a Register message to the tracker so that the tracker can save our public listneer port
 	// Send the daemon port if running as development
 	// Hit a STUN server and send the public port if running as production
 
-	d.Logger.Info("Sending Register message to Tracker")
 	d.PublicListenPort = strings.Split(d.LocalAddr, ":")[1]
 	d.PublicIP = "::1"
-	if d.Mode == "prod" {
-		// Hit a STUN server and get the public port
-		// TODO: Implement this
-		d.Logger.Info("Trying to hit STUN servers to get public listen port")
-	}
-	// Send a Register message to the tracker the first time we connect
-	// The tracker will register our public IP:PORT
-	maxRetries := 3
-	registerMsg := &protocol.RegisterMessage{
-		PublicIpAddress: d.PublicIP,
-		ListenPort:      d.PublicListenPort,
-	}
-
-	for i := 0; i < maxRetries; i++ {
-		netMsg := &protocol.NetworkMessage{
-			MessageType: &protocol.NetworkMessage_Register{
-				Register: registerMsg,
-			},
-		}
-
-		// err := d.TrackerRouter.WriteMessage(netMsg)
-		// if err == nil {
-		// 	break
-		// }
-		err := utils.SendNetMsg(d.TrackerRouter.Conn, netMsg)
-		if err == nil {
-			break
-		}
-
-		d.Logger.Warnf("Registration attempt %d failed: %v", i+1, err)
-		time.Sleep(time.Duration(math.Pow(2, float64(i))) * time.Second)
-	}
-	d.Logger.Debugf("Sent Register message to Tracker: %+v", registerMsg)
 
 	// Send an Announce message to the tracker the first time we connect
 	files, err := d.FileStore.GetFiles()
