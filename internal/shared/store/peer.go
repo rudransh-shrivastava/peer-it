@@ -58,10 +58,6 @@ func (ps *PeerStore) DropAllPeers() error {
 	if err != nil {
 		return err
 	}
-	err = ps.DB.Exec("DELETE FROM peer_listeners").Error
-	if err != nil {
-		return err
-	}
 	return ps.DB.Exec("DELETE FROM peers").Error
 }
 

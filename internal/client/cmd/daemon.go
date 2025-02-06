@@ -9,7 +9,9 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -48,7 +50,11 @@ type Daemon struct {
 	CLISignalRegisterCh chan *protocol.NetworkMessage_SignalRegister
 	CLISignalDownloadCh chan *protocol.NetworkMessage_SignalDownload
 
-	PeerConnections map[string]*webrtc.PeerConnection
+	PeerConnections  map[string]*webrtc.PeerConnection
+	PeerDataChannels map[string]*webrtc.DataChannel
+	PeerChunkMap     map[string]map[string][]int32
+
+	mu sync.Mutex
 }
 
 func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, localAddr string, mode string) (*Daemon, error) {
@@ -106,6 +112,8 @@ func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, l
 		CLISignalRegisterCh:       signalRegisterCh,
 		CLISignalDownloadCh:       signalDownloadCh,
 		PeerConnections:           make(map[string]*webrtc.PeerConnection),
+		PeerDataChannels:          make(map[string]*webrtc.DataChannel),
+		PeerChunkMap:              make(map[string]map[string][]int32),
 	}, nil
 }
 
@@ -252,6 +260,10 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 				d.Logger.Debugf("Received peer list %+v", peers)
 				for _, peer := range peers {
 					peerID := peer.GetId()
+					if _, exists := d.PeerConnections[peerID]; exists {
+						d.Logger.Debugf("Already connected to peer: %s", peerID)
+						continue
+					}
 					d.Logger.Debugf("Setting up WebRTC connection with peer: %s", peerID)
 
 					err := d.handleWebRTCConnection(peerID, config)
@@ -417,7 +429,6 @@ func (d *Daemon) handleTrackerMsgs() {
 			d.Logger.Info("Stopping the tracker message listener")
 			return
 		case signalingMsg := <-d.TrackerSignalingCh:
-			d.Logger.Debugf("Received signaling message")
 
 			peerID := signalingMsg.Signaling.GetSourcePeerId()
 			pc, exists := d.PeerConnections[peerID]
@@ -547,27 +558,92 @@ func (d *Daemon) handleWebRTCConnection(peerId string, config webrtc.Configurati
 
 	d.PeerConnections[peerId] = peerConnection
 
-	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		d.Logger.Infof("ICE Connection State has changed: %s", connectionState.String())
+	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+		d.Logger.Infof("Peer Connection State has changed: %s", s.String())
 	})
 
-	protocolName := "file-transfer"
-	dataChannelConfig := &webrtc.DataChannelInit{
-		Ordered:        &[]bool{true}[0], // Ensure ordered delivery
-		MaxRetransmits: nil,              // Unlimited retransmissions
-		Protocol:       &protocolName,
+	setupDataChannel := func(dc *webrtc.DataChannel) {
+		d.mu.Lock()
+		d.PeerDataChannels[peerId] = dc
+		d.mu.Unlock()
+
+		dc.OnOpen(func() {
+			d.Logger.Infof("Data channel '%s'-'%d' open", dc.Label(), dc.ID())
+			d.Logger.Infof("Sending chunk maps for all files")
+
+			files, err := d.FileStore.GetFiles()
+			if err != nil {
+				d.Logger.Errorf("Failed to get files: %v", err)
+				return
+			}
+			d.Logger.Infof("Found %d files in FileStore", len(files))
+
+			for _, file := range files {
+				if err := d.sendIntroduction(peerId, file.Hash); err != nil {
+					d.Logger.Warnf("Failed to send introduction: %v", err)
+				}
+			}
+		})
+
+		dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+			d.Logger.Infof("Received message from DataChannel '%s' with length: %d", dc.Label(), len(msg.Data))
+			var netMsg protocol.NetworkMessage
+			if err := proto.Unmarshal(msg.Data, &netMsg); err != nil {
+				d.Logger.Warnf("Failed to unmarshal message: %v", err)
+				return
+			}
+
+			switch m := netMsg.MessageType.(type) {
+			case *protocol.NetworkMessage_Introduction:
+				d.Logger.Infof("Received introduction message for file: %s", m.Introduction.FileHash)
+				d.handleIntroduction(peerId, m.Introduction)
+			default:
+				d.Logger.Warnf("Unknown message type received")
+			}
+		})
+
+		dc.OnError(func(err error) {
+			d.Logger.Errorf("Data channel error: %v", err)
+		})
+
+		dc.OnClose(func() {
+			d.Logger.Infof("Data channel '%s'-'%d' closed", dc.Label(), dc.ID())
+		})
 	}
 
-	dataChannel, err := peerConnection.CreateDataChannel("data", dataChannelConfig)
+	myID, err := strconv.Atoi(d.ID)
 	if err != nil {
-		return fmt.Errorf("failed to create data channel: %v", err)
+		return fmt.Errorf("invalid local peer ID format: %v", err)
 	}
-	dataChannel.OnOpen(func() {
-		d.Logger.Infof("Data channel '%s'-'%d' open", dataChannel.Label(), dataChannel.ID())
-	})
-	dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-		d.Logger.Infof("Message from DataChannel '%s': '%s'", dataChannel.Label(), string(msg.Data))
-	})
+
+	otherID, err := strconv.Atoi(peerId)
+	if err != nil {
+		return fmt.Errorf("invalid remote peer ID format: %v", err)
+	}
+
+	if myID < otherID {
+		// We create the data channel
+		d.Logger.Infof("Creating data channel as lower peer ID (%d < %d)", myID, otherID)
+		protocolName := "file-transfer"
+		dataChannelConfig := &webrtc.DataChannelInit{
+			Ordered:        &[]bool{true}[0], // Ensure ordered delivery
+			MaxRetransmits: nil,              // Unlimited retransmissions
+			Protocol:       &protocolName,
+		}
+
+		dataChannel, err := peerConnection.CreateDataChannel("data", dataChannelConfig)
+		if err != nil {
+			return fmt.Errorf("failed to create data channel: %v", err)
+		}
+		setupDataChannel(dataChannel)
+	} else {
+		// We wait for the data channel
+		d.Logger.Infof("Waiting for data channel as higher peer ID (%d > %d)", myID, otherID)
+		peerConnection.OnDataChannel(func(dc *webrtc.DataChannel) {
+			d.Logger.Infof("Received data channel from peer")
+			setupDataChannel(dc)
+		})
+	}
 
 	peerConnection.OnICECandidate(func(ice *webrtc.ICECandidate) {
 		if ice != nil {
@@ -598,7 +674,6 @@ func (d *Daemon) handleWebRTCConnection(peerId string, config webrtc.Configurati
 			}
 		}
 	})
-
 	return nil
 }
 

@@ -35,3 +35,14 @@ func (cs *ChunkStore) CreateChunk(file *schema.File, size int, index int, hash s
 	}
 	return nil
 }
+
+func (cs *ChunkStore) GetChunks(fileHash string) (*[]schema.Chunk, error) {
+	file := &schema.File{}
+	err := cs.DB.First(&file, "hash = ?", fileHash).Error
+	chunks := []schema.Chunk{}
+	err = cs.DB.Find(&chunks, "file_id = ?", file.ID).Error
+	if err != nil {
+		return nil, err
+	}
+	return &chunks, nil
+}
