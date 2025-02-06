@@ -112,7 +112,17 @@ func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
 	daemonAddr := prouter.Conn.RemoteAddr().String()
 	daemonIP, daemonPort, _ := net.SplitHostPort(prouter.Conn.RemoteAddr().String())
 	t.Logger.Infof("New peer connected: %s:%s\n", daemonIP, daemonPort)
-	err := t.PeerStore.CreatePeer(daemonIP, daemonPort)
+	daemonId, err := t.PeerStore.CreatePeer(daemonIP, daemonPort)
+
+	idNetMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_Id{
+			Id: &protocol.IDMessage{
+				Id: daemonId,
+			},
+		},
+	}
+	prouter.WriteMessage(idNetMsg)
+	t.Logger.Infof("Sent %s back its ID: %s", daemonAddr, daemonId)
 	if err != nil {
 		t.Logger.Warnf("Error creating peer: %v", err)
 		return
@@ -126,6 +136,9 @@ func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
 		t.Logger.Warn("Daemon channels do not existw")
 		return
 	}
+
+	// Send it back its ID
+
 	for {
 		select {
 		// If the client times out, delete the client from the db

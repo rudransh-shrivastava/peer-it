@@ -24,6 +24,7 @@ import (
 )
 
 type Daemon struct {
+	ID  string
 	Ctx context.Context
 
 	TrackerRouter *prouter.MessageRouter
@@ -41,6 +42,7 @@ type Daemon struct {
 	Logger *logrus.Logger
 
 	TrackerPeerListResponseCh chan *protocol.NetworkMessage_PeerListResponse
+	TrackerIdMessageCh        chan *protocol.NetworkMessage_Id
 
 	CLISignalRegisterCh chan *protocol.NetworkMessage_SignalRegister
 	CLISignalDownloadCh chan *protocol.NetworkMessage_SignalDownload
@@ -61,12 +63,18 @@ func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, l
 	}
 
 	peerListResponseCh := make(chan *protocol.NetworkMessage_PeerListResponse, 100)
+	idMessageCh := make(chan *protocol.NetworkMessage_Id, 100)
+
 	signalRegisterCh := make(chan *protocol.NetworkMessage_SignalRegister, 100)
 	signalDownloadCh := make(chan *protocol.NetworkMessage_SignalDownload, 100)
 
 	trackerProuter := prouter.NewMessageRouter(conn)
 	trackerProuter.AddRoute(peerListResponseCh, func(msg proto.Message) bool {
 		_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_PeerListResponse)
+		return ok
+	})
+	trackerProuter.AddRoute(idMessageCh, func(msg proto.Message) bool {
+		_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Id)
 		return ok
 	})
 	trackerProuter.Start()
@@ -84,6 +92,7 @@ func newDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, l
 		Mode:                      mode, // Can be dev or prod
 		Logger:                    logger,
 		TrackerPeerListResponseCh: peerListResponseCh,
+		TrackerIdMessageCh:        idMessageCh,
 		CLISignalRegisterCh:       signalRegisterCh,
 		CLISignalDownloadCh:       signalDownloadCh,
 	}, nil
@@ -367,6 +376,9 @@ func (d *Daemon) handleTrackerMsgs() {
 
 			channel <- responseMsg
 			d.Logger.Info("Sent peer list response to CLI")
+		case idMsg := <-d.TrackerIdMessageCh:
+			d.ID = idMsg.Id.GetId()
+			d.Logger.Infof("Got my ID from tracker server: %s", d.ID)
 		}
 	}
 }

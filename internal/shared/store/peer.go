@@ -1,6 +1,8 @@
 package store
 
 import (
+	"strconv"
+
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
 	"gorm.io/gorm"
 )
@@ -13,9 +15,17 @@ func NewPeerStore(db *gorm.DB) *PeerStore {
 	return &PeerStore{DB: db}
 }
 
-func (ps *PeerStore) CreatePeer(ip string, port string) error {
+// returns id and error
+func (ps *PeerStore) CreatePeer(ip string, port string) (string, error) {
 	peer := schema.Peer{IPAddress: ip, Port: port}
-	return ps.DB.Create(&peer).Error
+	err := ps.DB.Create(&peer).Error
+	if err != nil {
+		return "", err
+	}
+	searchPeer := schema.Peer{}
+	err = ps.DB.First(&searchPeer, "ip_address = ? AND port = ?", ip, port).Error
+	id := searchPeer.ID
+	return strconv.Itoa(int(id)), nil
 }
 
 func (ps *PeerStore) DeletePeer(ip string, port string) error {

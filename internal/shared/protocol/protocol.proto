@@ -17,6 +17,7 @@ message NetworkMessage {
         SignalRegisterMessage signal_register = 9;
         SignalDownloadMessage signal_download = 10;
         SignalingMessage signaling = 11;
+        IDMessage id = 12;
     }
 }
 
@@ -106,4 +107,8 @@ message IceCandidate {
   string candidate = 1;
   string sdpMid = 2;
   int32 sdpMLineIndex = 3;
+}
+
+message IDMessage {
+    string id = 1;
 }
