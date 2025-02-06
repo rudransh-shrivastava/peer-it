@@ -1,7 +1,9 @@
 package utils
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 
@@ -89,4 +91,10 @@ func UnsafeReceiveNetMsg(conn net.Conn) (*protocol.NetworkMessage, error) {
 		return nil, err
 	}
 	return &netMsg, nil
+}
+
+func GenerateHash(data []byte) string {
+	hash := sha256.New()
+	hash.Write(data)
+	return fmt.Sprintf("%x", hash.Sum(nil))
 }

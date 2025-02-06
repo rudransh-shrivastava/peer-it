@@ -1,15 +1,10 @@
 package cmd
 
 import (
-	"crypto/sha256"
-	"fmt"
-
 	"github.com/rudransh-shrivastava/peer-it/internal/client/client"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils/logger"
 	"github.com/spf13/cobra"
 )
-
-const maxChunkSize = 256 * 1024
 
 // Chunks the file into 256kb chunks, generates hashes for each chunk and stores them in the database
 var registerCmd = &cobra.Command{
@@ -33,10 +28,4 @@ var registerCmd = &cobra.Command{
 		}
 		logger.Info("Successfully registered file with tracker")
 	},
-}
-
-func generateHash(data []byte) string {
-	hash := sha256.New()
-	hash.Write(data)
-	return fmt.Sprintf("%x", hash.Sum(nil))
 }

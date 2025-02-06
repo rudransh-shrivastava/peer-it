@@ -7,8 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const heartbeatInterval = 5
-
 var rootCmd = &cobra.Command{
 	Use:  `peer-it`,
 	Long: `peer-it is a peer to peer file transfer application`,
