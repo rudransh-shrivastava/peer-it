@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/rudransh-shrivastava/peer-it/internal/client/client"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils/logger"
 	"github.com/spf13/cobra"
@@ -27,6 +30,9 @@ var registerCmd = &cobra.Command{
 			logger.Fatal(err)
 			return
 		}
+		fileName := strings.Split(filePath, "/")[len(strings.Split(filePath, "/"))-1]
 		logger.Info("Successfully registered file with tracker")
+		fullFilePath := fmt.Sprintf("downloads/daemon-%s/%s.pit", socketIndex, fileName)
+		logger.Infof("Created a .p2p file: %s", fullFilePath)
 	},
 }

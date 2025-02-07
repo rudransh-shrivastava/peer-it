@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,7 +58,6 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 			return
 		case downloadSignal := <-d.CLISignalDownloadCh:
 			d.Logger.Debugf("Received a new Download Signal from %s: %v", cliAddr, downloadSignal)
-			// TODO:
 			// Create an empty entry in db and send a register msg to tracker
 			// Also create an empty file with 0 bytes written but same size as file we want to download
 			// Question is how will we know the size and the amount of chunks in the file we want to download
@@ -66,8 +66,71 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 			filePath := downloadSignal.SignalDownload.GetFilePath()
 			d.Logger.Infof("File path to parse and start downloading: %s", filePath)
 
-			fileHash := ""
-			d.Logger.Panic("Parse the file")
+			parserFile, err := parser.ParseP2PFile(filePath)
+			if err != nil {
+				d.Logger.Warn(err)
+				continue
+			}
+			d.Logger.Debugf("Parsed file: %+v", parserFile)
+
+			// 1. create the file in db
+			// 2. create an empty file with the same size as the file we want to download
+			// 1.
+			fileSize, err := strconv.Atoi(parserFile.FileSize)
+			if err != nil {
+				d.Logger.Warnf("Error converting file size to int: %v", err)
+				continue
+			}
+			fileTotalChunks, err := strconv.Atoi(parserFile.TotalChunks)
+			if err != nil {
+				d.Logger.Warnf("Error converting total chunks to int: %v", err)
+				continue
+			}
+			fileHash := parserFile.FileHash
+			schemaFile := schema.File{
+				Size:         int64(fileSize),
+				MaxChunkSize: maxChunkSize,
+				TotalChunks:  fileTotalChunks,
+				Hash:         fileHash,
+				CreatedAt:    time.Now().Unix(),
+			}
+			// log the stats of the file
+			d.Logger.Debugf("file: %s with size %d and hash %s\n", parserFile.FileName, fileSize, fileHash)
+			created, err := d.FileStore.CreateFile(&schemaFile)
+			if err != nil {
+				d.Logger.Warnf("Error creating file: %v", err)
+				return
+			}
+			// 2.
+			sizeInBytes := int64(fileSize) / 8
+			downloadDirPath := fmt.Sprintf("downloads/daemon-%s/", d.IPCSocketIndex)
+			err = os.MkdirAll(downloadDirPath, os.ModePerm)
+			if err != nil {
+				d.Logger.Warnf("Error creating directory: %v", err)
+				return
+			}
+			if created {
+				file, err := os.Create(downloadDirPath + parserFile.FileName)
+				if err != nil {
+					d.Logger.Warnf("Error creating file: %v", err)
+					return
+				}
+				defer file.Close()
+				// Seek to the desired file size and write a single zero byte
+				_, err = file.Seek(int64(sizeInBytes-1), 0) // Move to size-1 position
+				if err != nil {
+					d.Logger.Warnf("Error seeking file: %v", err)
+					return
+				}
+
+				_, err = file.Write([]byte{0}) // Write a single null byte to allocate space
+				if err != nil {
+					d.Logger.Warnf("Error writing to file: %v", err)
+					return
+				}
+				d.Logger.Infof("Created an empty file with size %d or %d bytes", fileSize, sizeInBytes)
+			}
+
 			peerListReqMsg := &protocol.NetworkMessage{
 				MessageType: &protocol.NetworkMessage_PeerListRequest{
 					PeerListRequest: &protocol.PeerListRequest{
@@ -82,7 +145,7 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 				d.PendingPeerListRequests[fileHash] = channel
 			}
 
-			err := d.TrackerRouter.WriteMessage(peerListReqMsg)
+			err = d.TrackerRouter.WriteMessage(peerListReqMsg)
 			if err != nil {
 				d.Logger.Warnf("Error sending message to Tracker: %v", err)
 			}
@@ -168,6 +231,7 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 		case registerSignal := <-d.CLISignalRegisterCh:
 			filePath := registerSignal.SignalRegister.GetFilePath()
 			d.Logger.Debugf("Received a new Register Signal from %s: %v", cliAddr, registerSignal)
+			// Open the file and get its info
 			file, err := os.Open(filePath)
 			if err != nil {
 				d.Logger.Warnf("Error opening file: %v", err)
@@ -212,6 +276,7 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 			d.Logger.Info("Attempting to create chunks with metadata...")
 
 			parserFile := &parser.ParserFile{
+				FileName:     fileName,
 				FileHash:     fileHash,
 				FileSize:     fmt.Sprintf("%d", fileSize),
 				MaxChunkSize: fmt.Sprintf("%d", maxChunkSize),
