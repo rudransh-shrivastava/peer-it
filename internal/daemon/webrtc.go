@@ -14,9 +14,9 @@ func (d *Daemon) handleWebRTCConnection(peerId string, fileHash string, config w
 	if err != nil {
 		return fmt.Errorf("failed to create peer connection: %v", err)
 	}
-
+	d.mu.Lock()
 	d.PeerConnections[peerId] = peerConnection
-
+	d.mu.Unlock()
 	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		d.Logger.Infof("Peer Connection State has changed: %s", s.String())
 	})
@@ -123,6 +123,16 @@ func (d *Daemon) webrtcMessageHandler(msg webrtc.DataChannelMessage, peerId stri
 	case *protocol.NetworkMessage_Introduction:
 		d.Logger.Infof("Received introduction message for file: %s", m.Introduction.FileHash)
 		d.handleIntroduction(peerId, m.Introduction)
+
+	case *protocol.NetworkMessage_ChunkRequest:
+		d.Logger.Infof("Received chunk request for file: %s", m.ChunkRequest.FileHash)
+		d.handleChunkRequest(peerId, m.ChunkRequest)
+
+	case *protocol.NetworkMessage_ChunkResponse:
+		d.Logger.Infof("Received chunk response for file: %s", m.ChunkResponse.FileHash)
+		d.handleChunkResponse(peerId, m.ChunkResponse)
+
+	// TODO: case for a GOT message to tell others we got a chunk
 	default:
 		d.Logger.Warnf("Unknown message type received")
 	}

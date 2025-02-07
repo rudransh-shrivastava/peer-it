@@ -88,6 +88,7 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 			}
 			fileHash := parserFile.FileHash
 			schemaFile := schema.File{
+				Name:         parserFile.FileName,
 				Size:         int64(fileSize),
 				MaxChunkSize: maxChunkSize,
 				TotalChunks:  fileTotalChunks,
@@ -100,6 +101,37 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 			if err != nil {
 				d.Logger.Warnf("Error creating file: %v", err)
 				return
+			}
+			for _, chunk := range parserFile.Chunks {
+				chunkIndex, err := strconv.Atoi(chunk.ChunkIndex)
+				if err != nil {
+					d.Logger.Warnf("Error converting chunk index to int: %v", err)
+					continue
+				}
+				chunkSize, err := strconv.Atoi(chunk.ChunkSize)
+				if err != nil {
+					d.Logger.Warnf("Error converting chunk size to int: %v", err)
+					continue
+				}
+				err = d.ChunkStore.CreateChunk(&schemaFile, chunkSize, chunkIndex, chunk.ChunkHash, false)
+				if err != nil {
+					d.Logger.Warnf("Error creating chunk: %v", err)
+					return
+				}
+				d.Logger.Debugf("chunk %d: %s with size %d\n", chunkIndex, chunk.ChunkHash, chunkSize)
+			}
+
+			// if file was created means it was a fresh file and we do not have any chunks in the ChunkStore
+			// in this case we probably need to initialize our map with 0's
+			// if file was not created that means we already have some chunks in the ChunkStore
+			if created {
+				d.mu.Lock()
+				// Ensure `d.PeerChunkMap[d.ID]` is initialized
+				if _, exists := d.PeerChunkMap[d.ID]; !exists {
+					d.PeerChunkMap[d.ID] = make(map[string][]int32)
+				}
+				d.PeerChunkMap[d.ID][fileHash] = make([]int32, fileTotalChunks)
+				d.mu.Unlock()
 			}
 			// 2.
 			sizeInBytes := int64(fileSize) / 8
@@ -255,6 +287,7 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 			fileHash := fmt.Sprintf("%x", hash.Sum(nil))
 
 			schemaFile := schema.File{
+				Name:         fileName,
 				Size:         fileSize,
 				MaxChunkSize: maxChunkSize,
 				TotalChunks:  fileTotalChunks,
@@ -297,7 +330,7 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 				}
 
 				hash := utils.GenerateHash(buffer[:chunkSize])
-				err = d.ChunkStore.CreateChunk(&schemaFile, chunkSize, chunkIndex, hash, false)
+				err = d.ChunkStore.CreateChunk(&schemaFile, chunkSize, chunkIndex, hash, true)
 				if err != nil {
 					d.Logger.Warnf("Error creating chunk: %v", err)
 					return

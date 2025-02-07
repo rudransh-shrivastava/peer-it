@@ -203,6 +203,7 @@ func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
 				totalChunks := int(file.GetTotalChunks())
 				maxChunkSize := int(file.GetChunkSize())
 				schemaFile := &schema.File{
+					Name:         file.GetFileName(),
 					Size:         file.GetFileSize(),
 					MaxChunkSize: maxChunkSize,
 					TotalChunks:  totalChunks,

@@ -134,6 +134,26 @@ func (d *Daemon) initDaemon() {
 		d.Logger.Fatalf("Error getting files: %+v", err)
 		return
 	}
+	for _, file := range files {
+		chunks, err := d.ChunkStore.GetChunks(file.Hash)
+		if err != nil {
+			d.Logger.Fatalf("Error getting chunks: %+v", err)
+			return
+		}
+		chunkMap := make([]int32, file.TotalChunks)
+		for _, chunk := range *chunks {
+			if chunk.IsAvailable {
+				chunkMap[chunk.ChunkIndex] = 1
+			}
+		}
+		d.mu.Lock()
+		if _, exists := d.PeerChunkMap[d.ID]; !exists {
+			d.PeerChunkMap[d.ID] = make(map[string][]int32)
+		}
+		d.PeerChunkMap[d.ID][file.Hash] = chunkMap
+		d.mu.Unlock()
+	}
+
 	fileInfoMsgs := make([]*protocol.FileInfo, 0)
 	for _, file := range files {
 		fileInfoMsgs = append(fileInfoMsgs, &protocol.FileInfo{

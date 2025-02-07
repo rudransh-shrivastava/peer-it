@@ -50,3 +50,11 @@ func (fs *FileStore) GetFileByHash(hash string) (*schema.File, error) {
 	}
 	return file, nil
 }
+
+func (fs *FileStore) GetFileNameByHash(hash string) (string, error) {
+	file := &schema.File{}
+	if err := fs.DB.First(file, "hash = ?", hash).Error; err != nil {
+		return "", err
+	}
+	return file.Name, nil
+}

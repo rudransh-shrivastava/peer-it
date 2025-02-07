@@ -3,6 +3,7 @@ package schema
 // Requires file store
 type File struct {
 	ID           uint `gorm:"primaryKey"`
+	Name         string
 	Size         int64
 	MaxChunkSize int
 	TotalChunks  int
@@ -12,18 +13,13 @@ type File struct {
 
 // Requires chunk store
 type Chunk struct {
-	ID     uint `gorm:"primaryKey"`
-	Index  int
-	FileID uint `gorm:"not null;foreignKey:FileID;constraint:OnDelete:CASCADE"`
-	File   File `gorm:"constraint:OnDelete:CASCADE"`
-}
-
-type ChunkMetadata struct {
-	ID        uint `gorm:"primaryKey"`
-	ChunkID   uint `gorm:"not null;foreignKey:ChunkID;constraint:OnDelete:CASCADE"`
-	Chunk     Chunk
-	ChunkSize int
-	ChunkHash string
+	ID          uint `gorm:"primaryKey"`
+	FileID      uint `gorm:"not null;foreignKey:FileID;constraint:OnDelete:CASCADE"`
+	File        File `gorm:"constraint:OnDelete:CASCADE"`
+	ChunkIndex  int
+	ChunkSize   int
+	ChunkHash   string
+	IsAvailable bool
 }
 
 // Requires peer store

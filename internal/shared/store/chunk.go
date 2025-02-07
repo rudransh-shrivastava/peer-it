@@ -13,27 +13,31 @@ func NewChunkStore(db *gorm.DB) *ChunkStore {
 	return &ChunkStore{DB: db}
 }
 
-func (cs *ChunkStore) CreateChunk(file *schema.File, size int, index int, hash string, withMetadata bool) error {
+func (cs *ChunkStore) CreateChunk(file *schema.File, size int, index int, hash string, isAvailable bool) error {
 	chunk := schema.Chunk{
-		File:  *(file),
-		Index: index,
-	}
-	if withMetadata {
-		chunkMetadata := schema.ChunkMetadata{
-			Chunk:     chunk,
-			ChunkSize: size,
-			ChunkHash: hash,
-		}
-		err := cs.DB.Create(&chunkMetadata).Error
-		if err != nil {
-			return err
-		}
+		File:        *(file),
+		ChunkIndex:  index,
+		ChunkSize:   size,
+		ChunkHash:   hash,
+		IsAvailable: isAvailable,
 	}
 	err := cs.DB.Create(&chunk).Error
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+func (cs *ChunkStore) GetChunk(fileHash string, chunkIndex int) (*schema.Chunk, error) {
+	file := &schema.File{}
+	err := cs.DB.First(&file, "hash = ?", fileHash).Error
+	chunk := schema.Chunk{}
+	err = cs.DB.First(&chunk, "file_id = ? AND chunk_index = ?", file.ID, chunkIndex).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return &chunk, nil
 }
 
 func (cs *ChunkStore) GetChunks(fileHash string) (*[]schema.Chunk, error) {
@@ -45,4 +49,16 @@ func (cs *ChunkStore) GetChunks(fileHash string) (*[]schema.Chunk, error) {
 		return nil, err
 	}
 	return &chunks, nil
+}
+
+func (cs *ChunkStore) MarkChunkAvailable(filehash string, chunkIndex int) error {
+	file := &schema.File{}
+	err := cs.DB.First(&file, "hash = ?", filehash).Error
+	chunk := schema.Chunk{}
+	err = cs.DB.First(&chunk, "file_id = ? AND chunk_index = ?", file.ID, chunkIndex).Error
+	if err != nil {
+		return err
+	}
+	chunk.IsAvailable = true
+	return cs.DB.Save(&chunk).Error
 }

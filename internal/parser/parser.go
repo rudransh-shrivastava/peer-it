@@ -84,28 +84,33 @@ func ParseP2PFile(path string) (*ParserFile, error) {
 		line := scanner.Text()
 		if scanIndex == 0 {
 			parserFile.FileName = strings.Split(line, ":")[1]
+			logger.Infof("Filename: %s", parserFile.FileName)
 		}
 		if scanIndex == 1 {
 			parserFile.FileHash = strings.Split(line, ":")[1]
+			logger.Infof("FileHash: %s", parserFile.FileHash)
 		}
 		if scanIndex == 2 {
 			parserFile.FileSize = strings.Split(line, ":")[1]
+			logger.Infof("FileSize: %s", parserFile.FileSize)
 		}
 		if scanIndex == 3 {
 			parserFile.MaxChunkSize = strings.Split(line, ":")[1]
+			logger.Infof("MaxChunkSize: %s", parserFile.MaxChunkSize)
 		}
 		if scanIndex == 4 {
 			parserFile.TotalChunks = strings.Split(line, ":")[1]
+			logger.Infof("TotalChunks: %s", parserFile.TotalChunks)
 		}
 
 		if scanIndex > 4 {
-			scanner.Scan()
 			chunkLine := scanner.Text()
 
+			logger.Infof("Parsing >4 %s", chunkLine)
 			chunkIndex := strings.Split(chunkLine, ":")[0]
-			chunkData := strings.Split(strings.Split(chunkLine, ":")[1], "|")
-			chunkHash := chunkData[0]
-			chunkSize := chunkData[1]
+			chunkData := strings.Split(chunkLine, ":")[1]
+			chunkHash := strings.Split(chunkData, "|")[0]
+			chunkSize := strings.Split(chunkData, "|")[1]
 			parserFile.Chunks = append(parserFile.Chunks, ParserChunk{
 				ChunkIndex: chunkIndex,
 				ChunkHash:  chunkHash,
