@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"google.golang.org/protobuf/proto"
@@ -61,4 +62,32 @@ func (d *Daemon) updatePeerChunkMap(peerID string, fileHash string, chunksMap []
 	d.PeerChunkMap[peerID] = make(map[string][]int32)
 	d.PeerChunkMap[peerID][fileHash] = chunksMap
 	d.mu.Unlock()
+}
+
+func (d *Daemon) sendHeartBeatsToTracker() {
+	ticker := time.NewTicker(heartbeatInterval * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-d.Ctx.Done():
+			d.Logger.Info("Stopping the heart")
+			return
+		case <-ticker.C:
+			d.Logger.Info("Sending a heartbeat")
+			hb := &protocol.HeartbeatMessage{
+				Timestamp: time.Now().Unix(),
+			}
+
+			netMsg := &protocol.NetworkMessage{
+				MessageType: &protocol.NetworkMessage_Heartbeat{
+					Heartbeat: hb,
+				},
+			}
+
+			err := d.TrackerRouter.WriteMessage(netMsg)
+			if err != nil {
+				d.Logger.Warnf("Error sending message to Tracker: %v", err)
+			}
+		}
+	}
 }
