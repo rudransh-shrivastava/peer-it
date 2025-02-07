@@ -28,4 +28,5 @@ func init() {
 	rootCmd.AddCommand(registerCmd)
 	rootCmd.AddCommand(downloadCmd)
 	rootCmd.AddCommand(daemonCmd)
+	rootCmd.AddCommand(parseCmd)
 }
