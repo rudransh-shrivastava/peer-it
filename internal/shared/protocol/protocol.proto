@@ -83,7 +83,7 @@ message SignalRegisterMessage {
 }
 
 message SignalDownloadMessage {
-    string file_hash = 1;
+    string file_path = 1;
 }
 
 // WebRTC connection messages

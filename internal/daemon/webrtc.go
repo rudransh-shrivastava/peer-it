@@ -9,8 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func (d *Daemon) handleWebRTCConnection(peerId string, config webrtc.Configuration, isInitiator bool) error {
-
+func (d *Daemon) handleWebRTCConnection(peerId string, fileHash string, config webrtc.Configuration, isInitiator bool) error {
 	peerConnection, err := webrtc.NewPeerConnection(config)
 	if err != nil {
 		return fmt.Errorf("failed to create peer connection: %v", err)
@@ -29,16 +28,14 @@ func (d *Daemon) handleWebRTCConnection(peerId string, config webrtc.Configurati
 
 		dc.OnOpen(func() {
 			d.Logger.Infof("Data channel '%s'-'%d' open", dc.Label(), dc.ID())
-			d.Logger.Infof("Sending chunk maps for all files")
+			if isInitiator {
+				d.Logger.Infof("Sending chunk maps for file: %s", fileHash)
+				file, err := d.FileStore.GetFileByHash(fileHash)
+				if err != nil {
+					d.Logger.Errorf("Failed to get file: %v", err)
+					return
+				}
 
-			files, err := d.FileStore.GetFiles()
-			if err != nil {
-				d.Logger.Errorf("Failed to get files: %v", err)
-				return
-			}
-			d.Logger.Infof("Found %d files in FileStore", len(files))
-
-			for _, file := range files {
 				if err := d.sendIntroduction(peerId, file.Hash); err != nil {
 					d.Logger.Warnf("Failed to send introduction: %v", err)
 				}

@@ -11,8 +11,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// TODO: make generic
-
 func SendAnnounceMsg(conn net.Conn, msg *protocol.AnnounceMessage) error {
 	netMsg := &protocol.NetworkMessage{
 		MessageType: &protocol.NetworkMessage_Announce{

@@ -10,12 +10,17 @@ import (
 
 func (d *Daemon) sendIntroduction(peerID string, fileHash string) error {
 	// Get chunk availability
+	file, err := d.FileStore.GetFileByHash(fileHash)
+	if err != nil {
+		return fmt.Errorf("failed to get file: %v", err)
+	}
+
 	chunks, err := d.ChunkStore.GetChunks(fileHash)
 	if err != nil {
 		return fmt.Errorf("failed to get chunks: %v", err)
 	}
 
-	chunksMap := make([]int32, len(*chunks))
+	chunksMap := make([]int32, file.TotalChunks)
 	for _, chunk := range *chunks {
 		chunksMap[chunk.Index] = 1
 	}
@@ -51,17 +56,31 @@ func (d *Daemon) handleIntroduction(peerID string, msg *protocol.IntroductionMes
 	d.Logger.Infof("Handling introduction from peer %s for file %s", peerID, msg.FileHash)
 	d.Logger.Infof("Received chunks map of length: %d", len(msg.ChunksMap))
 
-	// Store peer's chunk availability
-	d.updatePeerChunkMap(peerID, msg.FileHash, msg.ChunksMap)
+	// If its our first time receiving the chunks map
+	// we will need to send our chunks map
+	_, exists := d.PeerChunkMap[peerID][msg.FileHash]
+	if !exists {
+		d.Logger.Infof("Sending our chunks map to peer %s for file %s", peerID, msg.FileHash)
+		err := d.sendIntroduction(peerID, msg.FileHash)
+		if err != nil {
+			d.Logger.Warnf("Failed to send introduction: %v", err)
+		}
+
+		d.mu.Lock()
+		d.PeerChunkMap[peerID] = make(map[string][]int32)
+		d.PeerChunkMap[peerID][msg.GetFileHash()] = msg.GetChunksMap()
+		d.mu.Unlock()
+
+	} else {
+		d.Logger.Infof("Chunks map already exists for peer %s for file %s", peerID, msg.FileHash)
+
+		d.mu.Lock()
+		d.PeerChunkMap[peerID][msg.GetFileHash()] = msg.GetChunksMap()
+		d.mu.Unlock()
+	}
+
 	d.Logger.Infof("Received chunk map from peer %s:%v for file: %s", peerID, msg.ChunksMap, msg.FileHash)
 	// Request missing chunks
-}
-
-func (d *Daemon) updatePeerChunkMap(peerID string, fileHash string, chunksMap []int32) {
-	d.mu.Lock()
-	d.PeerChunkMap[peerID] = make(map[string][]int32)
-	d.PeerChunkMap[peerID][fileHash] = chunksMap
-	d.mu.Unlock()
 }
 
 func (d *Daemon) sendHeartBeatsToTracker() {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pion/webrtc/v3"
+	"github.com/rudransh-shrivastava/peer-it/internal/parser"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/prouter"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
@@ -56,7 +57,17 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 			return
 		case downloadSignal := <-d.CLISignalDownloadCh:
 			d.Logger.Debugf("Received a new Download Signal from %s: %v", cliAddr, downloadSignal)
-			fileHash := downloadSignal.SignalDownload.GetFileHash()
+			// TODO:
+			// Create an empty entry in db and send a register msg to tracker
+			// Also create an empty file with 0 bytes written but same size as file we want to download
+			// Question is how will we know the size and the amount of chunks in the file we want to download
+			// One solution is to have a .pit file or .p2p file with all this info kinda like a .torrent file
+			// So, we will have to parse the file and get the info from it
+			filePath := downloadSignal.SignalDownload.GetFilePath()
+			d.Logger.Infof("File path to parse and start downloading: %s", filePath)
+
+			fileHash := ""
+			d.Logger.Panic("Parse the file")
 			peerListReqMsg := &protocol.NetworkMessage{
 				MessageType: &protocol.NetworkMessage_PeerListRequest{
 					PeerListRequest: &protocol.PeerListRequest{
@@ -64,6 +75,7 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 					},
 				},
 			}
+			// Request a peer list for the file we want to download
 			channel, exists := d.PendingPeerListRequests[fileHash]
 			if !exists {
 				channel = make(chan *protocol.NetworkMessage_PeerListResponse, 100)
@@ -108,7 +120,7 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 					}
 					d.Logger.Debugf("Setting up WebRTC connection with peer: %s", peerID)
 
-					err := d.handleWebRTCConnection(peerID, config, true)
+					err := d.handleWebRTCConnection(peerID, fileHash, config, true)
 					if err != nil {
 						d.Logger.Warnf("Failed to setup WebRTC connection: %v", err)
 						continue
@@ -199,26 +211,39 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 
 			d.Logger.Info("Attempting to create chunks with metadata...")
 
+			parserFile := &parser.ParserFile{
+				FileHash:     fileHash,
+				FileSize:     fmt.Sprintf("%d", fileSize),
+				MaxChunkSize: fmt.Sprintf("%d", maxChunkSize),
+				TotalChunks:  fmt.Sprintf("%d", fileTotalChunks),
+				Chunks:       make([]parser.ParserChunk, 0),
+			}
 			buffer := make([]byte, maxChunkSize)
 			chunkIndex := 0
 			file.Seek(0, 0)
 			for {
-				n, err := file.Read(buffer)
+				chunkSize, err := file.Read(buffer)
 				if err != nil && err != io.EOF {
 					d.Logger.Warnf("Error reading buffer: %v", err)
 					return
 				}
-				if n == 0 {
+				if chunkSize == 0 {
 					break
 				}
 
-				hash := utils.GenerateHash(buffer[:n])
-				err = d.ChunkStore.CreateChunk(&schemaFile, n, chunkIndex, hash, false)
+				hash := utils.GenerateHash(buffer[:chunkSize])
+				err = d.ChunkStore.CreateChunk(&schemaFile, chunkSize, chunkIndex, hash, false)
 				if err != nil {
 					d.Logger.Warnf("Error creating chunk: %v", err)
 					return
 				}
-				d.Logger.Debugf("chunk %d: %s with size %d\n", chunkIndex, hash, n)
+				d.Logger.Debugf("chunk %d: %s with size %d\n", chunkIndex, hash, chunkSize)
+				chunk := parser.ParserChunk{
+					ChunkIndex: fmt.Sprintf("%d", chunkIndex),
+					ChunkHash:  hash,
+					ChunkSize:  fmt.Sprintf("%d", chunkSize),
+				}
+				parserFile.Chunks = append(parserFile.Chunks, chunk)
 				chunkIndex++
 			}
 
@@ -244,6 +269,12 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 				return
 			}
 
+			// Create a .p2p file with the file metadata
+			err = parser.GenerateP2PFile(parserFile, downloadDirPath+fileName+".p2p")
+			if err != nil {
+				d.Logger.Warnf("Error generating .p2p file: %v", err)
+				return
+			}
 			// send announce message to tracker to tell it to add the file
 			fileInfoMsgs := make([]*protocol.FileInfo, 0)
 			fileInfoMsgs = append(fileInfoMsgs, &protocol.FileInfo{

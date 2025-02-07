@@ -48,22 +48,6 @@ func NewClient(index string) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) WaitForPeerList() *protocol.PeerListResponse {
-	netMsg, err := utils.UnsafeReceiveNetMsg(c.DaemonConn)
-	if err != nil {
-		c.Logger.Fatal(err)
-	}
-	switch msg := netMsg.MessageType.(type) {
-	case *protocol.NetworkMessage_PeerListResponse:
-		c.Logger.Debugf("Received peer list response from daemon %+v", msg)
-		peerListResponse := netMsg.GetPeerListResponse()
-		return peerListResponse
-	default:
-		c.Logger.Warnf("Unexpected message type: %T", msg)
-	}
-	return nil
-}
-
 func (c *Client) SendRegisterSignal(filePath string) error {
 	netMsg := &protocol.NetworkMessage{
 		MessageType: &protocol.NetworkMessage_SignalRegister{
@@ -80,11 +64,11 @@ func (c *Client) SendRegisterSignal(filePath string) error {
 	return nil
 }
 
-func (c *Client) SendDownloadSignal(fileHash string) error {
+func (c *Client) SendDownloadSignal(filePath string) error {
 	netMsg := &protocol.NetworkMessage{
 		MessageType: &protocol.NetworkMessage_SignalDownload{
 			SignalDownload: &protocol.SignalDownloadMessage{
-				FileHash: fileHash,
+				FilePath: filePath,
 			},
 		},
 	}

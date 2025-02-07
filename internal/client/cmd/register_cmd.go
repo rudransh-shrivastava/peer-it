@@ -9,9 +9,10 @@ import (
 // Chunks the file into 256kb chunks, generates hashes for each chunk and stores them in the database
 var registerCmd = &cobra.Command{
 	Use:   "register path/to/file ipc-socket-index",
-	Short: "register a file to the tracker server",
-	Long:  `registers a file to the tracker server to make it available for download by other peers.`,
-	Args:  cobra.ExactArgs(2),
+	Short: "register a file to the tracker server and generates a .p2p file",
+	Long: `registers a file to the tracker server to make it available for download by other peers.
+			It also generates a .p2p file which contains the metadata of the file`,
+	Args: cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
 		filePath := args[0]
 		socketIndex := args[1]
