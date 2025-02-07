@@ -108,7 +108,7 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 					}
 					d.Logger.Debugf("Setting up WebRTC connection with peer: %s", peerID)
 
-					err := d.handleWebRTCConnection(peerID, config)
+					err := d.handleWebRTCConnection(peerID, config, true)
 					if err != nil {
 						d.Logger.Warnf("Failed to setup WebRTC connection: %v", err)
 						continue

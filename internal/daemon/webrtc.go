@@ -3,14 +3,14 @@ package daemon
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 
 	"github.com/pion/webrtc/v3"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"google.golang.org/protobuf/proto"
 )
 
-func (d *Daemon) handleWebRTCConnection(peerId string, config webrtc.Configuration) error {
+func (d *Daemon) handleWebRTCConnection(peerId string, config webrtc.Configuration, isInitiator bool) error {
+
 	peerConnection, err := webrtc.NewPeerConnection(config)
 	if err != nil {
 		return fmt.Errorf("failed to create peer connection: %v", err)
@@ -59,19 +59,9 @@ func (d *Daemon) handleWebRTCConnection(peerId string, config webrtc.Configurati
 		})
 	}
 
-	myID, err := strconv.Atoi(d.ID)
-	if err != nil {
-		return fmt.Errorf("invalid local peer ID format: %v", err)
-	}
-
-	otherID, err := strconv.Atoi(peerId)
-	if err != nil {
-		return fmt.Errorf("invalid remote peer ID format: %v", err)
-	}
-
-	if myID < otherID {
+	if isInitiator {
 		// We create the data channel
-		d.Logger.Infof("Creating data channel as lower peer ID (%d < %d)", myID, otherID)
+		d.Logger.Info("Creating data channel as we are the initiator")
 		protocolName := "file-transfer"
 		dataChannelConfig := &webrtc.DataChannelInit{
 			Ordered:        &[]bool{true}[0], // Ensure ordered delivery
@@ -86,7 +76,7 @@ func (d *Daemon) handleWebRTCConnection(peerId string, config webrtc.Configurati
 		setupDataChannel(dataChannel)
 	} else {
 		// We wait for the data channel
-		d.Logger.Infof("Waiting for data channel as higher peer ID (%d > %d)", myID, otherID)
+		d.Logger.Info("Waiting for data channel as other peer is the initiator")
 		peerConnection.OnDataChannel(func(dc *webrtc.DataChannel) {
 			d.Logger.Infof("Received data channel from peer")
 			setupDataChannel(dc)

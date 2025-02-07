@@ -34,7 +34,7 @@ func (d *Daemon) handleTrackerMsgs() {
 						},
 					}
 
-					err := d.handleWebRTCConnection(peerID, config)
+					err := d.handleWebRTCConnection(peerID, config, false)
 					if err != nil {
 						d.Logger.Warnf("Failed to create peer connection: %v", err)
 						continue
