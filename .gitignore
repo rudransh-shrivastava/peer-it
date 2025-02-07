@@ -2,7 +2,7 @@
 bin
 
 # SQLite database files
-client.sqlite3
+client-*.sqlite3
 tracker.sqlite3
 
 # Downloaded files

@@ -23,7 +23,7 @@ type Client struct {
 }
 
 func NewClient(index string) (*Client, error) {
-	db, err := db.NewDB()
+	db, err := db.NewDB(index)
 	logger := logger.NewLogger()
 	if err != nil {
 		logger.Fatal(err)

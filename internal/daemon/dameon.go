@@ -30,7 +30,6 @@ type Daemon struct {
 	FileStore  *store.FileStore
 	ChunkStore *store.ChunkStore
 
-	LocalAddr               string // Local Peer Listen Addr
 	IPCSocketIndex          string
 	PendingPeerListRequests map[string]chan *protocol.NetworkMessage_PeerListResponse
 
@@ -50,8 +49,8 @@ type Daemon struct {
 	mu sync.Mutex
 }
 
-func NewDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, localAddr string) (*Daemon, error) {
-	db, err := db.NewDB()
+func NewDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string) (*Daemon, error) {
+	db, err := db.NewDB(ipcSocketIndex)
 	if err != nil {
 		return &Daemon{}, err
 	}
@@ -96,7 +95,6 @@ func NewDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string, l
 		// will send the messsages to
 		PendingPeerListRequests:   make(map[string]chan *protocol.NetworkMessage_PeerListResponse),
 		IPCSocketIndex:            ipcSocketIndex,
-		LocalAddr:                 localAddr,
 		Logger:                    logger,
 		TrackerPeerListResponseCh: peerListResponseCh,
 		TrackerIdMessageCh:        idMessageCh,
@@ -121,7 +119,7 @@ func (d *Daemon) Start() {
 
 	d.initDaemon()
 
-	d.Logger.Infof("Daemon ready, running on %s", d.LocalAddr)
+	d.Logger.Info("Daemon is now running...")
 
 	<-sigChan
 	d.Logger.Info("Shutting down daemon...")

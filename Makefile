@@ -41,3 +41,9 @@ tracker: protoc
 run-tracker: tracker
 		@echo "Running tracker..."
 		@./$(TRACKER_BINARY_PATH)
+
+.PHONY: clean
+clean:
+		@echo "Cleaning up..."
+		@rm -rf downloads
+		@rm *.sqlite3

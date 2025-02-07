@@ -6,8 +6,9 @@ import (
 	"gorm.io/gorm"
 )
 
-func NewDB() (*gorm.DB, error) {
-	database, err := gorm.Open(sqlite.Open("client.sqlite3"), &gorm.Config{
+func NewDB(index string) (*gorm.DB, error) {
+	dbName := "client-" + index + ".sqlite3"
+	database, err := gorm.Open(sqlite.Open(dbName), &gorm.Config{
 		PrepareStmt: true,
 	})
 	if err != nil {
