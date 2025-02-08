@@ -37,6 +37,13 @@ var downloadCmd = &cobra.Command{
 			progressbar.OptionSetWidth(40),
 			progressbar.OptionSetWriter(os.Stderr),
 			progressbar.OptionClearOnFinish(),
+			progressbar.OptionSetTheme(progressbar.Theme{
+				Saucer:        "#",
+				SaucerHead:    ">",
+				SaucerPadding: "-",
+				BarStart:      "[",
+				BarEnd:        "]",
+			}),
 		)
 
 		// Configure logger to use custom writer
