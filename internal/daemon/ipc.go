@@ -95,6 +95,13 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 				Hash:         fileHash,
 				CreatedAt:    time.Now().Unix(),
 			}
+			// initialize the peer chunk map for the file
+			d.mu.Lock()
+			if _, exists := d.PeerChunkMap[d.ID]; !exists {
+				d.PeerChunkMap[d.ID] = make(map[string][]int32)
+			}
+			d.PeerChunkMap[d.ID][fileHash] = make([]int32, fileTotalChunks)
+			d.mu.Unlock()
 			// log the stats of the file
 			d.Logger.Debugf("file: %s with size %d and hash %s\n", parserFile.FileName, fileSize, fileHash)
 			created, err := d.FileStore.CreateFile(&schemaFile)

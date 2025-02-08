@@ -180,6 +180,34 @@ func (d *Daemon) initDaemon() {
 	}
 
 	d.Logger.Debugf("Sent initial Announce message to Tracker: %+v", announceMsg)
+
+	// // set our own chunks map
+	d.mu.Lock()
+	d.PeerChunkMap[d.ID] = make(map[string][]int32)
+	d.mu.Unlock()
+	// for _, file := range files {
+	// 	d.PeerChunkMap[d.ID][file.Hash] = make([]int32, file.TotalChunks)
+	// 	chunks, err := d.ChunkStore.GetChunks(file.Hash)
+	// 	if err != nil {
+	// 		d.Logger.Fatalf("Error getting chunks: %+v", err)
+	// 		return
+	// 	}
+	// 	d.Logger.Debugf("File: %s", file.Hash)
+	// 	d.Logger.Debugf("Chunks: %+v", chunks)
+	// 	d.Logger.Debugf("TotalChunks: %d", file.TotalChunks)
+	// 	d.Logger.Debugf("Our Map :%+v", d.PeerChunkMap[d.ID][file.Hash])
+
+	// 	chunkMap := make([]int32, file.TotalChunks)
+	// 	for _, chunk := range *chunks {
+	// 		if chunk.IsAvailable {
+	// 			chunkMap[chunk.ChunkIndex] = 1
+	// 		}
+	// 	}
+	// 	d.PeerChunkMap[d.ID][file.Hash] = chunkMap
+	// 	d.Logger.Debugf("Updated Map :%+v", d.PeerChunkMap[d.ID][file.Hash])
+	// }
+	// d.mu.Unlock()
+
 	// Send heartbeats every n seconds
 	go d.sendHeartBeatsToTracker()
 }

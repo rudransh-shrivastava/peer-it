@@ -167,6 +167,7 @@ func (d *Daemon) handleChunkResponse(peerId string, msg *protocol.ChunkResponse)
 		return
 	}
 
+	// set our map to reflect that we have the chunk
 	d.mu.Lock()
 	d.PeerChunkMap[d.ID][msg.FileHash][msg.ChunkIndex] = 1
 	d.mu.Unlock()
