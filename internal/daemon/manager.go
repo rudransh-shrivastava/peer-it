@@ -174,9 +174,7 @@ func (d *Daemon) addPeerToDownload(peerID string, fileHash string) {
 func (d *Daemon) removePeerFromDownloads(peerID string) {
 	d.mu.Lock()
 	for _, download := range d.ActiveDownloads {
-
 		delete(download.ActivePeers, peerID)
-		download.mu.Unlock()
 	}
 	d.mu.Unlock()
 }

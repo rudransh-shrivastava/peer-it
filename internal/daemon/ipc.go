@@ -73,9 +73,19 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 			}
 			d.Logger.Debugf("Parsed file: %+v", parserFile)
 
+			// if file already exists in the db, we should not create it again
+			// we should just start the download
+
+			exists := false
+			_, err = d.FileStore.GetFileByHash(parserFile.FileHash)
+			if err == nil {
+				exists = true
+			}
+
 			// 1. create the file in db
 			// 2. create an empty file with the same size as the file we want to download
 			// 1.
+			created := false
 			fileSize, err := strconv.Atoi(parserFile.FileSize)
 			if err != nil {
 				d.Logger.Warnf("Error converting file size to int: %v", err)
@@ -104,30 +114,31 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 			d.mu.Unlock()
 			// log the stats of the file
 			d.Logger.Debugf("file: %s with size %d and hash %s\n", parserFile.FileName, fileSize, fileHash)
-			created, err := d.FileStore.CreateFile(&schemaFile)
-			if err != nil {
-				d.Logger.Warnf("Error creating file: %v", err)
-				return
-			}
-			for _, chunk := range parserFile.Chunks {
-				chunkIndex, err := strconv.Atoi(chunk.ChunkIndex)
+			if !exists {
+				created, err = d.FileStore.CreateFile(&schemaFile)
 				if err != nil {
-					d.Logger.Warnf("Error converting chunk index to int: %v", err)
-					continue
-				}
-				chunkSize, err := strconv.Atoi(chunk.ChunkSize)
-				if err != nil {
-					d.Logger.Warnf("Error converting chunk size to int: %v", err)
-					continue
-				}
-				err = d.ChunkStore.CreateChunk(&schemaFile, chunkSize, chunkIndex, chunk.ChunkHash, false)
-				if err != nil {
-					d.Logger.Warnf("Error creating chunk: %v", err)
+					d.Logger.Warnf("Error creating file: %v", err)
 					return
 				}
-				d.Logger.Debugf("chunk %d: %s with size %d\n", chunkIndex, chunk.ChunkHash, chunkSize)
+				for _, chunk := range parserFile.Chunks {
+					chunkIndex, err := strconv.Atoi(chunk.ChunkIndex)
+					if err != nil {
+						d.Logger.Warnf("Error converting chunk index to int: %v", err)
+						continue
+					}
+					chunkSize, err := strconv.Atoi(chunk.ChunkSize)
+					if err != nil {
+						d.Logger.Warnf("Error converting chunk size to int: %v", err)
+						continue
+					}
+					err = d.ChunkStore.CreateChunk(&schemaFile, chunkSize, chunkIndex, chunk.ChunkHash, false)
+					if err != nil {
+						d.Logger.Warnf("Error creating chunk: %v", err)
+						return
+					}
+					d.Logger.Debugf("chunk %d: %s with size %d\n", chunkIndex, chunk.ChunkHash, chunkSize)
+				}
 			}
-
 			// if file was created means it was a fresh file and we do not have any chunks in the ChunkStore
 			// in this case we probably need to initialize our map with 0's
 			// if file was not created that means we already have some chunks in the ChunkStore

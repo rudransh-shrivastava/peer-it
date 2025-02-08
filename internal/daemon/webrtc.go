@@ -19,6 +19,13 @@ func (d *Daemon) handleWebRTCConnection(peerId string, fileHash string, config w
 	d.mu.Unlock()
 	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		d.Logger.Infof("Peer Connection State has changed: %s", s.String())
+		if s == webrtc.PeerConnectionStateDisconnected {
+			d.Logger.Infof("Peer %s disconnected", peerId)
+			d.mu.Lock()
+			delete(d.PeerConnections, peerId)
+			d.mu.Unlock()
+			d.removePeerFromDownloads(peerId)
+		}
 	})
 
 	setupDataChannel := func(dc *webrtc.DataChannel) {
