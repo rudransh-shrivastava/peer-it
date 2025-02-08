@@ -44,13 +44,19 @@ func (d *Daemon) startIPCServer() {
 			return ok
 		})
 
+		channels := Channels{
+			LogCh:     make(chan *protocol.NetworkMessage_Log, 100),
+			GoodbyeCh: make(chan *protocol.NetworkMessage_Goodbye, 100),
+		}
+		d.Channels[cliConn.RemoteAddr().String()] = channels
+		d.CLIRouter = cliRouter
 		go cliRouter.Start()
-		go d.handleCLIMsgs(cliRouter) // problem here // using multiple go routines for same channels
+		go d.handleCLIMsgs(cliRouter)
 	}
 }
 
-func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
-	cliAddr := msgRouter.Conn.RemoteAddr().String()
+func (d *Daemon) handleCLIMsgs(cliRouter *prouter.MessageRouter) {
+	cliAddr := cliRouter.Conn.RemoteAddr().String()
 	for {
 		select {
 		case <-d.Ctx.Done():
@@ -72,7 +78,6 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 				continue
 			}
 			d.Logger.Debugf("Parsed file: %+v", parserFile)
-
 			// if file already exists in the db, we should not create it again
 			// we should just start the download
 
@@ -96,7 +101,9 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 				d.Logger.Warnf("Error converting total chunks to int: %v", err)
 				continue
 			}
+			// send total chunks to CLI
 			fileHash := parserFile.FileHash
+			d.messageCLI(fmt.Sprintf("+%d", fileTotalChunks))
 			schemaFile := schema.File{
 				Name:         parserFile.FileName,
 				Size:         int64(fileSize),

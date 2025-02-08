@@ -20,7 +20,7 @@ var registerCmd = &cobra.Command{
 		filePath := args[0]
 		socketIndex := args[1]
 		logger := logger.NewLogger()
-		client, err := client.NewClient(socketIndex)
+		client, err := client.NewClient(socketIndex, logger)
 		if err != nil {
 			logger.Fatal(err)
 			return

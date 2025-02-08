@@ -26,9 +26,9 @@ type Daemon struct {
 	ID  string
 
 	TrackerRouter *prouter.MessageRouter
-
-	FileStore  *store.FileStore
-	ChunkStore *store.ChunkStore
+	CLIRouter     *prouter.MessageRouter
+	FileStore     *store.FileStore
+	ChunkStore    *store.ChunkStore
 
 	IPCSocketIndex          string
 	PendingPeerListRequests map[string]chan *protocol.NetworkMessage_PeerListResponse
@@ -40,6 +40,7 @@ type Daemon struct {
 	TrackerSignalingCh        chan *protocol.NetworkMessage_Signaling
 
 	CLISignalRegisterCh chan *protocol.NetworkMessage_SignalRegister
+	Channels            map[string]Channels
 	CLISignalDownloadCh chan *protocol.NetworkMessage_SignalDownload
 
 	PeerConnections  map[string]*webrtc.PeerConnection
@@ -48,6 +49,11 @@ type Daemon struct {
 	ActiveDownloads  map[string]*FileDownload      // fileHash -> FileDownload
 
 	mu sync.Mutex
+}
+
+type Channels struct {
+	LogCh     chan *protocol.NetworkMessage_Log
+	GoodbyeCh chan *protocol.NetworkMessage_Goodbye
 }
 
 func NewDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string) (*Daemon, error) {
@@ -100,6 +106,7 @@ func NewDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string) (
 		TrackerPeerListResponseCh: peerListResponseCh,
 		TrackerIdMessageCh:        idMessageCh,
 		TrackerSignalingCh:        signalingMsgCh,
+		Channels:                  make(map[string]Channels),
 		CLISignalRegisterCh:       signalRegisterCh,
 		CLISignalDownloadCh:       signalDownloadCh,
 		PeerConnections:           make(map[string]*webrtc.PeerConnection),

@@ -135,6 +135,10 @@ func (d *Daemon) handleChunkRequest(peerID string, msg *protocol.ChunkRequest) {
 }
 
 func (d *Daemon) handleChunkResponse(peerId string, msg *protocol.ChunkResponse) {
+	logMsg := fmt.Sprintf("Got chunk %d from peer %s", msg.ChunkIndex, peerId)
+	d.messageCLI(logMsg)
+	incrMsg := "progress"
+	d.messageCLI(incrMsg)
 	d.Logger.Infof("Received chunk response from peer %s for file %s, chunk %d", peerId, msg.FileHash, msg.ChunkIndex)
 
 	// Write the chunk to the file
@@ -179,7 +183,8 @@ func (d *Daemon) handleChunkResponse(peerId string, msg *protocol.ChunkResponse)
 func (d *Daemon) handleIntroduction(peerId string, msg *protocol.IntroductionMessage) {
 	d.Logger.Infof("Handling introduction from peer %s for file %s", peerId, msg.FileHash)
 	d.Logger.Infof("Received chunks map of length: %d", len(msg.ChunksMap))
-
+	logMsg := fmt.Sprintf("Connected to peer %s", peerId)
+	d.messageCLI(logMsg)
 	// If its our first time receiving the chunks map
 	// we will need to send our chunks map
 	_, exists := d.PeerChunkMap[peerId][msg.FileHash]
@@ -208,6 +213,27 @@ func (d *Daemon) handleIntroduction(peerId string, msg *protocol.IntroductionMes
 	// Add peer to our peer list
 	d.Logger.Infof("Adding peer %s to our swarm for file: %s", peerId, msg.GetFileHash())
 	d.addPeerToDownload(peerId, msg.GetFileHash())
+}
+
+func (d *Daemon) messageCLI(msg string) {
+	d.Logger.Debugf("Sending LOG: %s to CLI", msg)
+	// Get CLI address from file hash
+	// get CLI router from CLI address
+	cliRouter := d.CLIRouter
+	if cliRouter == nil {
+		d.Logger.Warnf("CLI router not found")
+		return
+	}
+
+	// send message using CLI router
+	netMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_Log{
+			Log: &protocol.LogMessage{
+				Message: msg,
+			},
+		},
+	}
+	cliRouter.WriteMessage(netMsg)
 }
 
 func (d *Daemon) sendHeartBeatsToTracker() {

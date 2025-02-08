@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -37,17 +38,11 @@ func (d *Daemon) startFileDownload(fileHash string, totalChunks int) {
 }
 
 func (d *Daemon) downloadManager(dl *FileDownload) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-dl.downloadDone:
-			d.mu.Lock()
-			delete(d.ActiveDownloads, dl.FileHash)
-			d.mu.Unlock()
-			return
-
 		case <-ticker.C:
 			chunks, err := d.ChunkStore.GetChunks(dl.FileHash)
 			if err != nil {
@@ -65,7 +60,11 @@ func (d *Daemon) downloadManager(dl *FileDownload) {
 			}
 
 			if complete {
-				close(dl.downloadDone)
+				d.Logger.Infof("Download %s complete", dl.FileHash)
+				d.mu.Lock()
+				delete(d.ActiveDownloads, dl.FileHash)
+				d.mu.Unlock()
+				d.messageCLI("done")
 				return
 			}
 
@@ -142,22 +141,14 @@ func (d *Daemon) requestOneMissingChunk(fileHash string) {
 	for i := 0; i < maxRetries; i++ {
 		err = d.PeerDataChannels[selectedPeer].Send(data)
 		if err == nil {
-			d.Logger.Infof("Requested chunk %d from %s (attempt %d)", missingChunkIndex, selectedPeer, i+1)
+			log := fmt.Sprintf("Requested chunk %d from peer %s (attempt %d)", missingChunkIndex, selectedPeer, i+1)
+			d.Logger.Info(log)
 			return
 		}
 		time.Sleep(time.Duration(i+1) * time.Second)
 	}
 	d.Logger.Warnf("Failed to request chunk %d from %s after %d attempts", missingChunkIndex, selectedPeer, maxRetries)
 }
-
-// // Find missing chunks
-// var missing []int32
-// for i, chunk := range *localChunks {
-// 	if !chunk.IsAvailable {
-// 		missing = append(missing, int32(i))
-// 	}
-// }
-// d.Logger.Debugf("Missing chunks for %s: %v", fileHash, missing)
 
 func (d *Daemon) addPeerToDownload(peerID string, fileHash string) {
 	d.mu.Lock()

@@ -18,6 +18,7 @@ message NetworkMessage {
         SignalDownloadMessage signal_download = 10;
         SignalingMessage signaling = 11;
         IDMessage id = 12;
+        LogMessage log = 13;
     }
 }
 
@@ -113,4 +114,8 @@ message IceCandidate {
 
 message IDMessage {
     string id = 1;
+}
+
+message LogMessage {
+    string message = 1;
 }
