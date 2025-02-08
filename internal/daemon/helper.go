@@ -219,7 +219,6 @@ func (d *Daemon) sendHeartBeatsToTracker() {
 			d.Logger.Info("Stopping the heart")
 			return
 		case <-ticker.C:
-			d.Logger.Info("Sending a heartbeat")
 			hb := &protocol.HeartbeatMessage{
 				Timestamp: time.Now().Unix(),
 			}

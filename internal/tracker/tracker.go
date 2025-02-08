@@ -164,7 +164,6 @@ func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
 			return
 
 		case signalingMsg := <-channels.SignalingCh:
-			t.Logger.Debugf("Received a signal from %s: %v", daemonAddr, signalingMsg.Signaling)
 			targetPeerId := signalingMsg.Signaling.GetTargetPeerId()
 			forwardMsg := &protocol.NetworkMessage{
 				MessageType: &protocol.NetworkMessage_Signaling{
@@ -177,16 +176,13 @@ func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
 			}
 
 			if targetRouter, exists := t.DaemonRouters[targetPeerId]; exists {
-				t.Logger.Debugf("Attempting to forward msg from %s to %s: %v", signalingMsg.Signaling.GetSourcePeerId(), signalingMsg.Signaling.GetTargetPeerId(), signalingMsg.Signaling)
-
 				err = targetRouter.WriteMessage(forwardMsg)
 				if err != nil {
 					t.Logger.Warnf("Error forwarding signaling message: %v", err)
 				}
 			}
 
-		case heartbeat := <-channels.HeartbeatCh:
-			t.Logger.Debugf("Received heartbeat from %s: %v", daemonAddr, heartbeat.Heartbeat)
+		case <-channels.HeartbeatCh:
 			timeout.Reset(ClientTimeout * time.Second)
 
 		case <-channels.GoodbyeCh:

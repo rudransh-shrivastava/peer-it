@@ -229,6 +229,11 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 					peerID := peer.GetId()
 					if _, exists := d.PeerConnections[peerID]; exists {
 						d.Logger.Debugf("Already connected to peer: %s", peerID)
+						d.Logger.Debugf("Therefore, sending an introduction message for file: %s", fileHash)
+						err := d.sendIntroduction(peerID, fileHash)
+						if err != nil {
+							d.Logger.Warnf("Failed to send introduction: %v", err)
+						}
 						continue
 					}
 					d.Logger.Debugf("Setting up WebRTC connection with peer: %s", peerID)

@@ -18,7 +18,7 @@ func (d *Daemon) handleWebRTCConnection(peerId string, fileHash string, config w
 	d.PeerConnections[peerId] = peerConnection
 	d.mu.Unlock()
 	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
-		d.Logger.Infof("Peer Connection State has changed: %s", s.String())
+		d.Logger.Warnf("Peer Connection State has changed: %s", s.String())
 		if s == webrtc.PeerConnectionStateDisconnected {
 			d.Logger.Infof("Peer %s disconnected", peerId)
 			d.mu.Lock()
@@ -34,7 +34,7 @@ func (d *Daemon) handleWebRTCConnection(peerId string, fileHash string, config w
 		d.mu.Unlock()
 
 		dc.OnOpen(func() {
-			d.Logger.Infof("Data channel '%s'-'%d' open", dc.Label(), dc.ID())
+			d.Logger.Debugf("Data channel '%s'-'%d' open", dc.Label(), dc.ID())
 			if isInitiator {
 				d.Logger.Infof("Sending chunk maps for file: %s", fileHash)
 				file, err := d.FileStore.GetFileByHash(fileHash)
@@ -50,7 +50,6 @@ func (d *Daemon) handleWebRTCConnection(peerId string, fileHash string, config w
 		})
 
 		dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-			d.Logger.Infof("Received message from DataChannel '%s' with length: %d", dc.Label(), len(msg.Data))
 			d.webrtcMessageHandler(msg, peerId)
 		})
 
@@ -59,7 +58,7 @@ func (d *Daemon) handleWebRTCConnection(peerId string, fileHash string, config w
 		})
 
 		dc.OnClose(func() {
-			d.Logger.Infof("Data channel '%s'-'%d' closed", dc.Label(), dc.ID())
+			d.Logger.Debugf("Data channel '%s'-'%d' closed", dc.Label(), dc.ID())
 			d.mu.Lock()
 			delete(d.PeerDataChannels, peerId)
 			d.mu.Unlock()
@@ -71,7 +70,7 @@ func (d *Daemon) handleWebRTCConnection(peerId string, fileHash string, config w
 
 	if isInitiator {
 		// We create the data channel
-		d.Logger.Info("Creating data channel as we are the initiator")
+		d.Logger.Debug("Creating data channel as we are the initiator")
 		protocolName := "file-transfer"
 		dataChannelConfig := &webrtc.DataChannelInit{
 			Ordered:        &[]bool{true}[0], // Ensure ordered delivery
@@ -88,7 +87,6 @@ func (d *Daemon) handleWebRTCConnection(peerId string, fileHash string, config w
 		// We wait for the data channel
 		d.Logger.Info("Waiting for data channel as other peer is the initiator")
 		peerConnection.OnDataChannel(func(dc *webrtc.DataChannel) {
-			d.Logger.Infof("Received data channel from peer")
 			setupDataChannel(dc)
 		})
 	}
