@@ -204,20 +204,9 @@ func (d *Daemon) handleIntroduction(peerId string, msg *protocol.IntroductionMes
 
 	d.Logger.Infof("Received chunk map from peer %s:%v for file: %s", peerId, msg.ChunksMap, msg.FileHash)
 
-	d.Logger.Warn("REMOVE THE CODE BELOW, ONLY FOR TESTING")
-	// TESTING
-	// send a chunk request for the first chunk
-	reqMsg := &protocol.NetworkMessage{
-		MessageType: &protocol.NetworkMessage_ChunkRequest{
-			ChunkRequest: &protocol.ChunkRequest{
-				FileHash:   msg.FileHash,
-				ChunkIndex: 0,
-			},
-		},
-	}
-	data, _ := proto.Marshal(reqMsg)
-
-	d.PeerDataChannels[peerId].Send(data)
+	// Add peer to our peer list
+	d.Logger.Infof("Adding peer %s to our swarm for file: %s", peerId, msg.GetFileHash())
+	d.addPeerToDownload(peerId, msg.GetFileHash())
 }
 
 func (d *Daemon) sendHeartBeatsToTracker() {

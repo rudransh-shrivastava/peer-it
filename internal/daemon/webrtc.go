@@ -53,6 +53,12 @@ func (d *Daemon) handleWebRTCConnection(peerId string, fileHash string, config w
 
 		dc.OnClose(func() {
 			d.Logger.Infof("Data channel '%s'-'%d' closed", dc.Label(), dc.ID())
+			d.mu.Lock()
+			delete(d.PeerDataChannels, peerId)
+			d.mu.Unlock()
+			// Add peer to our peer list
+			d.Logger.Infof("Removing peer %s from our swarm", peerId)
+			d.removePeerFromDownloads(peerId)
 		})
 	}
 

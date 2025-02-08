@@ -254,7 +254,10 @@ func (d *Daemon) handleCLIMsgs(msgRouter *prouter.MessageRouter) {
 						d.Logger.Warnf("Failed to send offer: %v", err)
 					}
 				}
+				// start file download
 
+				d.Logger.Infof("Starting file download for file %s", schemaFile.Name)
+				d.startFileDownload(fileHash, fileTotalChunks)
 			case <-time.After(10 * time.Second):
 				d.Logger.Warn("Timeout waiting for peer list response")
 				continue

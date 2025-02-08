@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Chunks the file into 256kb chunks, generates hashes for each chunk and stores them in the database
+// Chunks the file into 32KB chunks, generates hashes for each chunk and stores them in the database
 var registerCmd = &cobra.Command{
 	Use:   "register path/to/file ipc-socket-index",
 	Short: "register a file to the tracker server and generates a .p2p file",

@@ -18,7 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const maxChunkSize = 256 * 1024
+const maxChunkSize = 32 * 1024
 const heartbeatInterval = 5
 
 type Daemon struct {
@@ -44,7 +44,8 @@ type Daemon struct {
 
 	PeerConnections  map[string]*webrtc.PeerConnection
 	PeerDataChannels map[string]*webrtc.DataChannel
-	PeerChunkMap     map[string]map[string][]int32
+	PeerChunkMap     map[string]map[string][]int32 // peerID -> fileHash -> chunkMap
+	ActiveDownloads  map[string]*FileDownload      // fileHash -> FileDownload
 
 	mu sync.Mutex
 }
@@ -104,6 +105,7 @@ func NewDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string) (
 		PeerConnections:           make(map[string]*webrtc.PeerConnection),
 		PeerDataChannels:          make(map[string]*webrtc.DataChannel),
 		PeerChunkMap:              make(map[string]map[string][]int32),
+		ActiveDownloads:           make(map[string]*FileDownload),
 	}, nil
 }
 
