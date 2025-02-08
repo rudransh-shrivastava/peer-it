@@ -1,5 +1,6 @@
 # Peer It - Peer to Peer file sharing [WIP]
 
+# Project complete, updating readme soon...
 Instead of relying solely on a single centralized server for file downloads and uploads, peer-it uses direct peer to peer communication.
 
 ### What is a Peer?
@@ -25,6 +26,6 @@ Features [WIP]:
 - [x] NAT Traversal, for direct peer to peer communication
 - [x] A `.p2p` or `.pit` file extension that can store the trackers ip, the files hashes, etc.
 - [x] Send 0th Chunk upon connection
-- [ ] Send and receive missing chunks
+- [x] Send and receive missing chunks
 
 This project is work in progress.
