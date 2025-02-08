@@ -98,7 +98,7 @@ func (c *Client) SendDownloadSignal(filePath string) error {
 	return nil
 }
 
-func (c *Client) ListenForDaemonLogs(done chan struct{}, logger *logrus.Logger) {
+func (c *Client) ListenForDaemonLogs(done chan struct{}) {
 	for {
 		select {
 		case logMsg := <-c.LogChan:
@@ -115,12 +115,12 @@ func (c *Client) ListenForDaemonLogs(done chan struct{}, logger *logrus.Logger) 
 				totalChunksStr := msg[1:]
 				totalChunks, err := strconv.Atoi(totalChunksStr)
 				if err != nil {
-					logger.Warnf("Error converting string to int: %v", err)
+					c.Logger.Warnf("Error converting string to int: %v", err)
 				}
 				c.TotalChunksChan <- totalChunks
 				continue
 			}
-			logger.Info(msg)
+			c.Logger.Info(msg)
 		}
 	}
 }

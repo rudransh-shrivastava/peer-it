@@ -59,7 +59,7 @@ var downloadCmd = &cobra.Command{
 		}
 
 		done := make(chan struct{})
-		go client.ListenForDaemonLogs(done, logger)
+		go client.ListenForDaemonLogs(done)
 
 		// Update progress bar with actual total when known
 		go func() {
