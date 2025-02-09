@@ -183,6 +183,4 @@ And once its done!
 
 ## License  
 
-This project is Licensed under the MIT License.# Peer It - Peer to Peer  File Sharing Network
-
-Peer it is a decentralised peer to peer file sharing network. 
+This project is Licensed under the MIT License.
