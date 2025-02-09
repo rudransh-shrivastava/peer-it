@@ -60,14 +60,14 @@ func NewTracker() *Tracker {
 }
 
 func (t *Tracker) Start() {
-	listen, err := net.Listen("tcp", ":42069")
+	listen, err := net.Listen("tcp", ":59000")
 	if err != nil {
 		t.Logger.Fatalf("Error starting TCP server: %+v", err)
 		return
 	}
 	defer listen.Close()
 
-	t.Logger.Infof("Server listening on port 42069")
+	t.Logger.Infof("Server listening on port 59000")
 
 	for {
 		conn, err := listen.Accept()
