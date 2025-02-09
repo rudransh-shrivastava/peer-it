@@ -80,6 +80,7 @@ var downloadCmd = &cobra.Command{
 		<-done
 		fmt.Println() // Final newline after progress bar
 		fileName := strings.Split(filePath, "/")[len(strings.Split(filePath, "/"))-1]
-		logger.Infof("Downloaded %s successfully! ✅", fileName)
+		actualFileName := strings.Join(strings.Split(fileName, ".")[:len(strings.Split(fileName, "."))-1], ".")
+		logger.Infof("Downloaded %s successfully! ✅", actualFileName)
 	},
 }

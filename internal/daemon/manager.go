@@ -38,7 +38,7 @@ func (d *Daemon) startFileDownload(fileHash string, totalChunks int) {
 }
 
 func (d *Daemon) downloadManager(dl *FileDownload) {
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
