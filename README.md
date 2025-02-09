@@ -25,7 +25,7 @@ The peer also helps the community by uploading parts of the files.
 
 ## Terminology  
 
-- `Peer`: A peer is any computer that is engages in sharing of a file.
+- `Peer`: A peer is any computer that engages in sharing of a file.
 - `Swarm`: A group of peers sharing a file is called a swarm.
 - `Tracker`: A tracker or a tracker server is a centralised server that maintains a table of `swarms`. 
 - `Daemon`: A daemon is a background process.
@@ -96,8 +96,8 @@ This project's peer to peer network basically comprises of three things.
 ## Getting Started  
 
 To try peer it, you need to 
-5. have [go](https://go.dev/doc/install)  installed.
-6. use Linux, because the CLI and Daemon use Unix sockets to communicate (I don't use windows so I didn't feel like a need to implement IPC for windows)
+1. have [go](https://go.dev/doc/install)  installed.
+2. use Linux, because the CLI and Daemon use Unix sockets to communicate (I don't use windows so I didn't feel like a need to implement IPC for windows)
 
 Clone the Github repository:
 ```bash
@@ -119,14 +119,16 @@ cd bin/
 First we will run our tracker server, we can run it either locally (for local peer to peer communication) or on a server with a static public IP to run peer-it on different networks.
 
 For this demonstration, I will be using a Linux server.
-### Run the Tracker Server
+### Running the Tracker Server
 ```bash
 ./tracker
 ```
 
 The tracker server runs on port `59000`
 
-### Run the Daemon
+---
+
+### Running the Daemon
 **Usage**: `client daemon <unique-index> <tracker-ip:port>`
 
 **Note**: The unique index exists to test multiple daemons on a single machine.
