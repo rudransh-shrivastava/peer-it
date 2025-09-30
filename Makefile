@@ -45,5 +45,4 @@ run-tracker: tracker
 .PHONY: clean
 clean:
 		@echo "Cleaning up..."
-		@rm -rf downloads
-		@rm *.sqlite3
+		@rm -rf bin
