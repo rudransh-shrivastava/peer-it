@@ -20,10 +20,7 @@ import (
 )
 
 func (d *Daemon) startIPCServer() {
-	socketUrl := "/tmp/pit-daemon-" + d.IPCSocketIndex + ".sock"
-	os.Remove(socketUrl)
-
-	l, err := net.Listen("unix", socketUrl)
+	l, err := net.Listen("tcp", ":69000")
 	if err != nil {
 		panic(err)
 	}

@@ -36,8 +36,7 @@ func NewClient(index string, logger *logrus.Logger) (*Client, error) {
 
 	fileStore := store.NewFileStore(db)
 	chunkStore := store.NewChunkStore(db)
-	socketUrl := "/tmp/pit-daemon-" + index + ".sock"
-	conn, err := net.Dial("unix", socketUrl)
+	conn, err := net.Dial("tcp", ":69000")
 	if err != nil {
 		logger.Fatal(err)
 		return &Client{}, err

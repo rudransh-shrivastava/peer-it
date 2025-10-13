@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"sync"
-	"syscall"
 
 	"github.com/pion/webrtc/v3"
 	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
@@ -119,7 +118,7 @@ func NewDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string) (
 func (d *Daemon) Start() {
 	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+	signal.Notify(sigChan, os.Interrupt)
 
 	d.Logger.Info("Daemon starting...")
 
