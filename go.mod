@@ -1,6 +1,6 @@
 module github.com/rudransh-shrivastava/peer-it
 
-go 1.23.5
+go 1.23
 
 require (
 	github.com/glebarez/sqlite v1.11.0
