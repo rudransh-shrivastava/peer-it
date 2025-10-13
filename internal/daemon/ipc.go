@@ -20,7 +20,7 @@ import (
 )
 
 func (d *Daemon) startIPCServer() {
-	l, err := net.Listen("tcp", ":69000")
+	l, err := net.Listen("tcp", ":6900")
 	if err != nil {
 		panic(err)
 	}

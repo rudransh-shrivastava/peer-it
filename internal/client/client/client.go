@@ -36,7 +36,7 @@ func NewClient(index string, logger *logrus.Logger) (*Client, error) {
 
 	fileStore := store.NewFileStore(db)
 	chunkStore := store.NewChunkStore(db)
-	conn, err := net.Dial("tcp", ":69000")
+	conn, err := net.Dial("tcp", ":6900")
 	if err != nil {
 		logger.Fatal(err)
 		return &Client{}, err
