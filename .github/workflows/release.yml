@@ -6,10 +6,8 @@ on:
       - "**"
 
 jobs:
-  release:
-    permissions:
-      contents: write
-    name: Release
+  build:
+    name: Build
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -37,6 +35,31 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
 
+      - name: Upload Client Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: peer-it-client-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: peer-it-client-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+
+      - name: Upload Tracker Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: peer-it-tracker-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: peer-it-tracker-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -48,22 +71,42 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Client Asset
+      - name: Upload Client Asset (Linux)
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./peer-it-client-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
-          asset_name: peer-it-client-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+          asset_path: artifacts/peer-it-client-linux-amd64/peer-it-client-linux-amd64
+          asset_name: peer-it-client-linux-amd64
           asset_content_type: application/octet-stream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Tracker Asset
+      - name: Upload Tracker Asset (Linux)
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./peer-it-tracker-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
-          asset_name: peer-it-tracker-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+          asset_path: artifacts/peer-it-tracker-linux-amd64/peer-it-tracker-linux-amd64
+          asset_name: peer-it-tracker-linux-amd64
+          asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Client Asset (Windows)
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/peer-it-client-windows-amd64/peer-it-client-windows-amd64.exe
+          asset_name: peer-it-client-windows-amd64.exe
+          asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Tracker Asset (Windows)
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/peer-it-tracker-windows-amd64/peer-it-tracker-windows-amd64.exe
+          asset_name: peer-it-tracker-windows-amd64.exe
           asset_content_type: application/octet-stream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
