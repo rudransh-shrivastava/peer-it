@@ -1,33 +1,33 @@
 # Peer It - Peer to Peer  File Sharing Network
 
-Peer it is a decentralised peer to peer file sharing network.
+Peer it is a decentralised peer to peer file sharing network. 
 
 
-## Table of Contents
+## Table of Contents  
 
-- [Introduction](#introduction)
-- [Terminology](#terminology)
-- [Features](#features)
-- [How Peer-It Works](#how-peer-it-works)
-- [Getting Started](#getting-started)
-- [Usage](#usage)
-- [License](#license)
+- [Introduction](#introduction)  
+- [Terminology](#terminology)  
+- [Features](#features)  
+- [How Peer-It Works](#how-peer-it-works)  
+- [Getting Started](#getting-started)  
+- [Usage](#usage)  
+- [License](#license)  
 
 
-## Introduction
+## Introduction  
 
-Instead of relying on a centralised server for file downloads, peer-it uses direct peer to peer communication.
+Instead of relying on a centralised server for file downloads, peer-it uses direct peer to peer communication. 
 We do this by using a server that knows which peers are sharing which files, essentially building a table, whenever a new peer joins in, we tell it which other peers are sharing the same file.
 Now, that peer can directly connect to all of them and asks for different parts of the files.
 The peer also helps the community by uploading parts of the files.
 
 
 
-## Terminology
+## Terminology  
 
 - `Peer`: A peer is any computer that engages in sharing of a file.
 - `Swarm`: A group of peers sharing a file is called a swarm.
-- `Tracker`: A tracker or a tracker server is a centralised server that maintains a table of `swarms`.
+- `Tracker`: A tracker or a tracker server is a centralised server that maintains a table of `swarms`. 
 - `Daemon`: A daemon is a background process.
 - `IPC`: Processes need to communicate with each other in many situations, IPC stands for Inter Process Communication, it is a mechanism that allows for communication between different processes.
 - `Protocol`: A set of rules between communicating parties that defines the structure of all messages being transferred.
@@ -37,7 +37,7 @@ The peer also helps the community by uploading parts of the files.
 
 
 
-## Features
+## Features  
 
 - A `.p2p` file that can be shared with anyone similar to `.torrent`
 - A tracker server for maintaining tables of swarms.
@@ -48,9 +48,9 @@ The peer also helps the community by uploading parts of the files.
 
 
 
-## How Peer-It Works
+## How Peer-It Works  
 
-Since peer-it is a peer to peer file sharing network, it needs to connect to other peers to be able to share files. This would have been very easy if both the peers were on the same network.
+Since peer-it is a peer to peer file sharing network, it needs to connect to other peers to be able to share files. This would have been very easy if both the peers were on the same network. 
 
 But modern ISPs use something called a NAT, they have to use a NAT because there is only a limited number of IP (**IPv4**) addresses which is **32-bit** (which comes to **2^32** unique addresses = around **4.29 billion**) available, which is nearly not enough for everyone.
 To get around this, ISPs use a NAT to map multiple local IP Addresses (the ones which they have the power of creating since its a local network) to a single public IP Address (that are limited).
@@ -77,7 +77,7 @@ We need to find a way to connect both the peers together. But wait, ISPs allow o
 
 Using this knowledge, we should be able to *trick* the NAT into allowing peer to peer communication. What we do is, once both the peers know their Public IP and Ports, they send it to each other, now both of them will try to send network packets to each others Public IP and Ports at the same time. This *tricks* the NAT into allowing this connection as both the parties have communicated with each other in the past!
 
-This process is basically punching a hole in a NAT aka `hole punching`.
+This process is basically punching a hole in a NAT aka `hole punching`. 
 Once a hole is punched. Both peers can communicate DIRECTLY without needing a server in the middle.
 
 This is exactly what `peer-it` does.
@@ -88,14 +88,14 @@ This project's peer to peer network basically comprises of three things.
 
 2. A Daemon, a daemon is a background process which we run on every device (peer). The daemon connects to the tracker server as soon as it boots up, the daemon is also responsible for connecting to other daemons and sharing files.
 
-3. A CLI, a CLI is a command line interface which uses IPC (unix sockets in this project) to communicate with the daemon
+3. A CLI, a CLI is a command line interface which uses IPC (unix sockets in this project) to communicate with the daemon 
 #### Diagram explaining the things above
 
 ![architecture](https://github.com/user-attachments/assets/1f77c03e-520b-45ff-b7ab-2e3bf007e167)
 
-## Getting Started
+## Getting Started  
 
-To try peer it, you need to
+To try peer it, you need to 
 1. have [go](https://go.dev/doc/install)  installed.
 2. use Linux, because the CLI and Daemon use Unix sockets to communicate (I don't use windows so I didn't feel like a need to implement IPC for windows)
 
@@ -114,7 +114,7 @@ This builds the project in the `bin` directory.
 ```bash
 cd bin/
 ```
-## Usage
+## Usage  
 
 First we will run our tracker server, we can run it either locally (for local peer to peer communication) or on a server with a static public IP to run peer-it on different networks.
 
@@ -163,7 +163,7 @@ In order to let the Tracker know that a file exists, we need to register it
 
 This creates a `downloads` directory, and a `file.p2p` file inside `downloads/daemon-1/`
 
-The `file.p2p` file contains the file metadata, like the file hash, how many chunks a file has, each chunk's size, etc.
+The `file.p2p` file contains the file metadata, like the file hash, how many chunks a file has, each chunk's size, etc. 
 
 We can share this `file.p2p` file with others, I will transfer this file to my friends machine
 
@@ -183,6 +183,6 @@ Now we use `file.p2p` to download the original `file.txt` from peers.
 And once its done!
 ![downloaded](https://github.com/user-attachments/assets/d7fdb9f5-deea-479c-b1e0-05f4ffa4099f)
 
-## License
+## License  
 
 This project is Licensed under the MIT License.
