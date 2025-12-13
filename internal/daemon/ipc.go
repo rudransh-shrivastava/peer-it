@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"context"
 	"crypto/sha256"
+	"database/sql"
 	"fmt"
 	"io"
 	"net"
@@ -14,7 +16,6 @@ import (
 	"github.com/rudransh-shrivastava/peer-it/internal/parser"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/prouter"
-	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
 	"google.golang.org/protobuf/proto"
 )
@@ -57,6 +58,7 @@ func (d *Daemon) startIPCServer() {
 }
 
 func (d *Daemon) handleCLIMsgs(cliRouter *prouter.MessageRouter) {
+	ctx := context.Background()
 	cliAddr := cliRouter.Conn.RemoteAddr().String()
 	for {
 		select {
@@ -64,377 +66,357 @@ func (d *Daemon) handleCLIMsgs(cliRouter *prouter.MessageRouter) {
 			d.Logger.Info("Stopping the CLI message listener")
 			return
 		case downloadSignal := <-d.CLISignalDownloadCh:
-			d.Logger.Debugf("Received a new Download Signal from %s: %v", cliAddr, downloadSignal)
-			// Create an empty entry in db and send a register msg to tracker
-			// Also create an empty file with 0 bytes written but same size as file we want to download
-			// Question is how will we know the size and the amount of chunks in the file we want to download
-			// One solution is to have a .pit file or .p2p file with all this info kinda like a .torrent file
-			// So, we will have to parse the file and get the info from it
-			filePath := downloadSignal.SignalDownload.GetFilePath()
-			d.Logger.Infof("File path to parse and start downloading: %s", filePath)
-
-			parserFile, err := parser.ParseP2PFile(filePath)
-			if err != nil {
-				d.Logger.Warn(err)
-				continue
-			}
-			d.Logger.Debugf("Parsed file: %+v", parserFile)
-			// if file already exists in the db, we should not create it again
-			// we should just start the download
-
-			exists := false
-			_, err = d.FileStore.GetFileByHash(parserFile.FileHash)
-			if err == nil {
-				exists = true
-			}
-
-			// 1. create the file in db
-			// 2. create an empty file with the same size as the file we want to download
-			// 1.
-			created := false
-			fileSize, err := strconv.Atoi(parserFile.FileSize)
-			if err != nil {
-				d.Logger.Warnf("Error converting file size to int: %v", err)
-				continue
-			}
-			fileTotalChunks, err := strconv.Atoi(parserFile.TotalChunks)
-			if err != nil {
-				d.Logger.Warnf("Error converting total chunks to int: %v", err)
-				continue
-			}
-			// send total chunks to CLI
-			fileHash := parserFile.FileHash
-			d.messageCLI(fmt.Sprintf("+%d", fileTotalChunks))
-			schemaFile := schema.File{
-				Name:         parserFile.FileName,
-				Size:         int64(fileSize),
-				MaxChunkSize: maxChunkSize,
-				TotalChunks:  fileTotalChunks,
-				Hash:         fileHash,
-				CreatedAt:    time.Now().Unix(),
-			}
-			// initialize the peer chunk map for the file
-			d.mu.Lock()
-			if _, exists := d.PeerChunkMap[d.ID]; !exists {
-				d.PeerChunkMap[d.ID] = make(map[string][]int32)
-			}
-			d.PeerChunkMap[d.ID][fileHash] = make([]int32, fileTotalChunks)
-			d.mu.Unlock()
-			// log the stats of the file
-			d.Logger.Debugf("file: %s with size %d and hash %s\n", parserFile.FileName, fileSize, fileHash)
-			if !exists {
-				created, err = d.FileStore.CreateFile(&schemaFile)
-				if err != nil {
-					d.Logger.Warnf("Error creating file: %v", err)
-					return
-				}
-				for _, chunk := range parserFile.Chunks {
-					chunkIndex, err := strconv.Atoi(chunk.ChunkIndex)
-					if err != nil {
-						d.Logger.Warnf("Error converting chunk index to int: %v", err)
-						continue
-					}
-					chunkSize, err := strconv.Atoi(chunk.ChunkSize)
-					if err != nil {
-						d.Logger.Warnf("Error converting chunk size to int: %v", err)
-						continue
-					}
-					err = d.ChunkStore.CreateChunk(&schemaFile, chunkSize, chunkIndex, chunk.ChunkHash, false)
-					if err != nil {
-						d.Logger.Warnf("Error creating chunk: %v", err)
-						return
-					}
-					d.Logger.Debugf("chunk %d: %s with size %d\n", chunkIndex, chunk.ChunkHash, chunkSize)
-				}
-			}
-			// if file was created means it was a fresh file and we do not have any chunks in the ChunkStore
-			// in this case we probably need to initialize our map with 0's
-			// if file was not created that means we already have some chunks in the ChunkStore
-			if created {
-				d.mu.Lock()
-				// Ensure `d.PeerChunkMap[d.ID]` is initialized
-				if _, exists := d.PeerChunkMap[d.ID]; !exists {
-					d.PeerChunkMap[d.ID] = make(map[string][]int32)
-				}
-				d.PeerChunkMap[d.ID][fileHash] = make([]int32, fileTotalChunks)
-				d.mu.Unlock()
-			}
-			// 2.
-			sizeInBytes := int64(fileSize) / 8
-			downloadDirPath := fmt.Sprintf("downloads/daemon-%s/", d.IPCSocketIndex)
-			err = os.MkdirAll(downloadDirPath, os.ModePerm)
-			if err != nil {
-				d.Logger.Warnf("Error creating directory: %v", err)
-				return
-			}
-			if created {
-				file, err := os.Create(downloadDirPath + parserFile.FileName)
-				if err != nil {
-					d.Logger.Warnf("Error creating file: %v", err)
-					return
-				}
-				defer file.Close()
-				// Seek to the desired file size and write a single zero byte
-				if _, err = file.Seek(sizeInBytes-1, 0); err != nil { // Move to size-1 position
-					d.Logger.Warnf("Error seeking file: %v", err)
-					return
-				}
-
-				_, err = file.Write([]byte{0}) // Write a single null byte to allocate space
-				if err != nil {
-					d.Logger.Warnf("Error writing to file: %v", err)
-					return
-				}
-				d.Logger.Infof("Created an empty file with size %d or %d bytes", fileSize, sizeInBytes)
-			}
-
-			peerListReqMsg := &protocol.NetworkMessage{
-				MessageType: &protocol.NetworkMessage_PeerListRequest{
-					PeerListRequest: &protocol.PeerListRequest{
-						FileHash: fileHash,
-					},
-				},
-			}
-			// Request a peer list for the file we want to download
-			channel, exists := d.PendingPeerListRequests[fileHash]
-			if !exists {
-				channel = make(chan *protocol.NetworkMessage_PeerListResponse, 100)
-				d.PendingPeerListRequests[fileHash] = channel
-			}
-
-			err = d.TrackerRouter.WriteMessage(peerListReqMsg)
-			if err != nil {
-				d.Logger.Warnf("Error sending message to Tracker: %v", err)
-			}
-			// WebRTC configuration
-			config := webrtc.Configuration{
-				ICEServers: []webrtc.ICEServer{
-					{
-						URLs: []string{
-							"stun:stun.l.google.com:19302",
-							"stun:stun1.l.google.com:19302",
-							"stun:stun2.l.google.com:19302",
-							"stun:stun3.l.google.com:19302",
-							"stun:stun4.l.google.com:19302",
-						},
-					},
-				},
-				ICETransportPolicy: webrtc.ICETransportPolicyAll,
-			}
-
-			select {
-			case peerListResponse := <-channel:
-				d.Logger.Debugf("Received peer list response from tracker using a channel: %v", peerListResponse)
-				if fileHash != peerListResponse.PeerListResponse.GetFileHash() {
-					d.Logger.Warnf("Response file hash does not match requested file hash, response: %s requested: %s",
-						peerListResponse.PeerListResponse.GetFileHash(), fileHash)
-					continue
-				}
-				peers := peerListResponse.PeerListResponse.GetPeers()
-				d.Logger.Debugf("Received peer list %+v", peers)
-				for _, peer := range peers {
-					peerID := peer.GetId()
-					if _, exists := d.PeerConnections[peerID]; exists {
-						d.Logger.Debugf("Already connected to peer: %s", peerID)
-						d.Logger.Debugf("Therefore, sending an introduction message for file: %s", fileHash)
-						err := d.sendIntroduction(peerID, fileHash)
-						if err != nil {
-							d.Logger.Warnf("Failed to send introduction: %v", err)
-						}
-						continue
-					}
-					d.Logger.Debugf("Setting up WebRTC connection with peer: %s", peerID)
-
-					err := d.handleWebRTCConnection(peerID, fileHash, config, true)
-					if err != nil {
-						d.Logger.Warnf("Failed to setup WebRTC connection: %v", err)
-						continue
-					}
-
-					// Create and send offer
-					peerConnection := d.PeerConnections[peerID]
-
-					offer, err := peerConnection.CreateOffer(nil)
-					if err != nil {
-						d.Logger.Warnf("Failed to create offer: %v", err)
-						continue
-					}
-
-					err = peerConnection.SetLocalDescription(offer)
-					if err != nil {
-						d.Logger.Warnf("Failed to set local description: %v", err)
-						continue
-					}
-
-					// Send offer through tracker
-					signalingMsg := &protocol.NetworkMessage{
-						MessageType: &protocol.NetworkMessage_Signaling{
-							Signaling: &protocol.SignalingMessage{
-								TargetPeerId: peerID,
-								Message: &protocol.SignalingMessage_Offer{
-									Offer: &protocol.Offer{
-										Sdp: offer.SDP,
-									},
-								},
-							},
-						},
-					}
-					err = d.TrackerRouter.WriteMessage(signalingMsg)
-					if err != nil {
-						d.Logger.Warnf("Failed to send offer: %v", err)
-					}
-				}
-				// start file download
-
-				d.Logger.Infof("Starting file download for file %s", schemaFile.Name)
-				d.startFileDownload(fileHash, fileTotalChunks)
-			case <-time.After(10 * time.Second):
-				d.Logger.Warn("Timeout waiting for peer list response")
-				continue
-			}
+			d.handleDownloadSignal(ctx, cliAddr, downloadSignal)
 
 		case registerSignal := <-d.CLISignalRegisterCh:
-			filePath := registerSignal.SignalRegister.GetFilePath()
-			d.Logger.Debugf("Received a new Register Signal from %s: %v", cliAddr, registerSignal)
-			// Open the file and get its info
-			file, err := os.Open(filePath)
-			if err != nil {
-				d.Logger.Warnf("Error opening file: %v", err)
-				return
-			}
-			defer file.Close()
+			d.handleRegisterSignal(ctx, cliAddr, registerSignal)
+		}
+	}
+}
 
-			fileName := strings.Split(file.Name(), "/")[len(strings.Split(file.Name(), "/"))-1]
-			fileInfo, err := file.Stat()
-			if err != nil {
-				d.Logger.Warnf("Error getting file info: %v", err)
-				return
-			}
-			fileSize := fileInfo.Size()
-			fileTotalChunks := int((fileSize + maxChunkSize - 1) / maxChunkSize)
-			hash := sha256.New()
-			if _, err := io.Copy(hash, file); err != nil {
-				d.Logger.Warnf("Error copying file hash to hash: %v", err)
-				return
-			}
-			fileHash := fmt.Sprintf("%x", hash.Sum(nil))
+func (d *Daemon) handleDownloadSignal(ctx context.Context, cliAddr string, downloadSignal *protocol.NetworkMessage_SignalDownload) {
+	d.Logger.Debugf("Received a new Download Signal from %s: %v", cliAddr, downloadSignal)
+	filePath := downloadSignal.SignalDownload.GetFilePath()
+	d.Logger.Infof("File path to parse and start downloading: %s", filePath)
 
-			schemaFile := schema.File{
-				Name:         fileName,
-				Size:         fileSize,
-				MaxChunkSize: maxChunkSize,
-				TotalChunks:  fileTotalChunks,
-				Hash:         fileHash,
-				CreatedAt:    time.Now().Unix(),
-			}
-			// log the stats of the file
-			d.Logger.Debugf("file: %s with size %d and hash %s\n", fileName, fileSize, fileHash)
-			created, err := d.FileStore.CreateFile(&schemaFile)
-			if !created {
-				d.Logger.Info("file already registered with tracker")
-				return
-			}
-			if err != nil {
-				d.Logger.Warnf("Error creating file: %v", err)
-				return
-			}
+	parserFile, err := parser.ParseP2PFile(filePath)
+	if err != nil {
+		d.Logger.Warn(err)
+		return
+	}
+	d.Logger.Debugf("Parsed file: %+v", parserFile)
 
-			d.Logger.Info("Attempting to create chunks with metadata...")
+	// Check if file already exists
+	_, err = d.FileStore.GetFileByHash(ctx, parserFile.FileHash)
+	fileExists := err == nil
 
-			parserFile := &parser.ParserFile{
-				FileName:     fileName,
-				FileHash:     fileHash,
-				FileSize:     fmt.Sprintf("%d", fileSize),
-				MaxChunkSize: fmt.Sprintf("%d", maxChunkSize),
-				TotalChunks:  fmt.Sprintf("%d", fileTotalChunks),
-				Chunks:       make([]parser.ParserChunk, 0),
-			}
-			buffer := make([]byte, maxChunkSize)
-			chunkIndex := 0
-			if _, err := file.Seek(0, 0); err != nil {
-				d.Logger.Warnf("Error seeking to start of file: %v", err)
-				return
-			}
-			for {
-				chunkSize, err := file.Read(buffer)
-				if err != nil && err != io.EOF {
-					d.Logger.Warnf("Error reading buffer: %v", err)
+	fileSize, err := strconv.Atoi(parserFile.FileSize)
+	if err != nil {
+		d.Logger.Warnf("Error converting file size to int: %v", err)
+		return
+	}
+	fileTotalChunks, err := strconv.Atoi(parserFile.TotalChunks)
+	if err != nil {
+		d.Logger.Warnf("Error converting total chunks to int: %v", err)
+		return
+	}
+
+	fileHash := parserFile.FileHash
+	d.messageCLI(fmt.Sprintf("+%d", fileTotalChunks))
+
+	// Initialize the peer chunk map for the file
+	d.mu.Lock()
+	if _, exists := d.PeerChunkMap[d.ID]; !exists {
+		d.PeerChunkMap[d.ID] = make(map[string][]int32)
+	}
+	d.PeerChunkMap[d.ID][fileHash] = make([]int32, fileTotalChunks)
+	d.mu.Unlock()
+
+	d.Logger.Debugf("file: %s with size %d and hash %s", parserFile.FileName, fileSize, fileHash)
+
+	var createdFile bool
+	if !fileExists {
+		dbFile, created, createErr := d.FileStore.CreateFile(ctx,
+			parserFile.FileName,
+			int64(fileSize),
+			maxChunkSize,
+			fileTotalChunks,
+			fileHash,
+		)
+		if createErr != nil {
+			d.Logger.Warnf("Error creating file: %v", createErr)
+			return
+		}
+		createdFile = created
+
+		if created {
+			for _, chunk := range parserFile.Chunks {
+				chunkIndex, parseErr := strconv.Atoi(chunk.ChunkIndex)
+				if parseErr != nil {
+					d.Logger.Warnf("Error converting chunk index to int: %v", parseErr)
+					continue
+				}
+				chunkSize, parseErr := strconv.Atoi(chunk.ChunkSize)
+				if parseErr != nil {
+					d.Logger.Warnf("Error converting chunk size to int: %v", parseErr)
+					continue
+				}
+				_, chunkErr := d.ChunkStore.CreateChunk(ctx, dbFile.ID, chunkIndex, chunkSize, chunk.ChunkHash, false)
+				if chunkErr != nil {
+					d.Logger.Warnf("Error creating chunk: %v", chunkErr)
 					return
 				}
-				if chunkSize == 0 {
-					break
+				d.Logger.Debugf("chunk %d: %s with size %d", chunkIndex, chunk.ChunkHash, chunkSize)
+			}
+		}
+	}
+
+	if createdFile {
+		d.mu.Lock()
+		if _, exists := d.PeerChunkMap[d.ID]; !exists {
+			d.PeerChunkMap[d.ID] = make(map[string][]int32)
+		}
+		d.PeerChunkMap[d.ID][fileHash] = make([]int32, fileTotalChunks)
+		d.mu.Unlock()
+	}
+
+	sizeInBytes := int64(fileSize) / 8
+	downloadDirPath := fmt.Sprintf("downloads/daemon-%s/", d.IPCSocketIndex)
+	if err := os.MkdirAll(downloadDirPath, os.ModePerm); err != nil {
+		d.Logger.Warnf("Error creating directory: %v", err)
+		return
+	}
+
+	if createdFile {
+		file, fileErr := os.Create(downloadDirPath + parserFile.FileName)
+		if fileErr != nil {
+			d.Logger.Warnf("Error creating file: %v", fileErr)
+			return
+		}
+		defer file.Close()
+
+		if _, err = file.Seek(sizeInBytes-1, 0); err != nil {
+			d.Logger.Warnf("Error seeking file: %v", err)
+			return
+		}
+
+		if _, err = file.Write([]byte{0}); err != nil {
+			d.Logger.Warnf("Error writing to file: %v", err)
+			return
+		}
+		d.Logger.Infof("Created an empty file with size %d or %d bytes", fileSize, sizeInBytes)
+	}
+
+	peerListReqMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_PeerListRequest{
+			PeerListRequest: &protocol.PeerListRequest{
+				FileHash: fileHash,
+			},
+		},
+	}
+
+	channel, exists := d.PendingPeerListRequests[fileHash]
+	if !exists {
+		channel = make(chan *protocol.NetworkMessage_PeerListResponse, 100)
+		d.PendingPeerListRequests[fileHash] = channel
+	}
+
+	if err := d.TrackerRouter.WriteMessage(peerListReqMsg); err != nil {
+		d.Logger.Warnf("Error sending message to Tracker: %v", err)
+	}
+
+	config := webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{
+			{
+				URLs: []string{
+					"stun:stun.l.google.com:19302",
+					"stun:stun1.l.google.com:19302",
+					"stun:stun2.l.google.com:19302",
+					"stun:stun3.l.google.com:19302",
+					"stun:stun4.l.google.com:19302",
+				},
+			},
+		},
+		ICETransportPolicy: webrtc.ICETransportPolicyAll,
+	}
+
+	select {
+	case peerListResponse := <-channel:
+		d.Logger.Debugf("Received peer list response from tracker using a channel: %v", peerListResponse)
+		if fileHash != peerListResponse.PeerListResponse.GetFileHash() {
+			d.Logger.Warnf("Response file hash does not match requested file hash")
+			return
+		}
+		peers := peerListResponse.PeerListResponse.GetPeers()
+		d.Logger.Debugf("Received peer list %+v", peers)
+		for _, peer := range peers {
+			peerID := peer.GetId()
+			if _, peerExists := d.PeerConnections[peerID]; peerExists {
+				d.Logger.Debugf("Already connected to peer: %s", peerID)
+				if introErr := d.sendIntroduction(peerID, fileHash); introErr != nil {
+					d.Logger.Warnf("Failed to send introduction: %v", introErr)
 				}
+				continue
+			}
+			d.Logger.Debugf("Setting up WebRTC connection with peer: %s", peerID)
 
-				hash := utils.GenerateHash(buffer[:chunkSize])
-				err = d.ChunkStore.CreateChunk(&schemaFile, chunkSize, chunkIndex, hash, true)
-				if err != nil {
-					d.Logger.Warnf("Error creating chunk: %v", err)
-					return
-				}
-				d.Logger.Debugf("chunk %d: %s with size %d\n", chunkIndex, hash, chunkSize)
-				chunk := parser.ParserChunk{
-					ChunkIndex: fmt.Sprintf("%d", chunkIndex),
-					ChunkHash:  hash,
-					ChunkSize:  fmt.Sprintf("%d", chunkSize),
-				}
-				parserFile.Chunks = append(parserFile.Chunks, chunk)
-				chunkIndex++
+			if webrtcErr := d.handleWebRTCConnection(peerID, fileHash, config, true); webrtcErr != nil {
+				d.Logger.Warnf("Failed to setup WebRTC connection: %v", webrtcErr)
+				continue
 			}
 
-			// copy the file to downlaoads/complete
-			downloadDirPath := fmt.Sprintf("downloads/daemon-%s/", d.IPCSocketIndex)
-			err = os.MkdirAll(downloadDirPath, os.ModePerm)
-			if err != nil {
-				d.Logger.Warnf("Error creating directory: %v", err)
-				return
+			peerConnection := d.PeerConnections[peerID]
+			offer, offerErr := peerConnection.CreateOffer(nil)
+			if offerErr != nil {
+				d.Logger.Warnf("Failed to create offer: %v", offerErr)
+				continue
 			}
 
-			createdFile, err := os.Create(downloadDirPath + fileName)
-			if err != nil {
-				d.Logger.Warnf("Error creating file: %v", err)
-				return
-			}
-			defer createdFile.Close()
-
-			if _, err := file.Seek(0, 0); err != nil {
-				d.Logger.Warnf("Error seeking to start of file: %v", err)
-				return
-			}
-			_, err = io.Copy(createdFile, file)
-			if err != nil {
-				d.Logger.Warnf("Error copying file: %v", err)
-				return
+			if sdpErr := peerConnection.SetLocalDescription(offer); sdpErr != nil {
+				d.Logger.Warnf("Failed to set local description: %v", sdpErr)
+				continue
 			}
 
-			// Create a .p2p file with the file metadata
-			err = parser.GenerateP2PFile(parserFile, downloadDirPath+fileName+".p2p")
-			if err != nil {
-				d.Logger.Warnf("Error generating .p2p file: %v", err)
-				return
-			}
-			// send announce message to tracker to tell it to add the file
-			fileInfoMsgs := make([]*protocol.FileInfo, 0)
-			fileInfoMsgs = append(fileInfoMsgs, &protocol.FileInfo{
-				FileSize:    schemaFile.Size,
-				ChunkSize:   int32(schemaFile.MaxChunkSize),
-				FileHash:    schemaFile.Hash,
-				TotalChunks: int32(schemaFile.TotalChunks),
-			})
-			d.Logger.Infof("Preparing to send Announce message to Tracker with newly created file: %v", fileInfoMsgs)
-
-			netMsg := &protocol.NetworkMessage{
-				MessageType: &protocol.NetworkMessage_Announce{
-					Announce: &protocol.AnnounceMessage{
-						Files: fileInfoMsgs,
+			signalingMsg := &protocol.NetworkMessage{
+				MessageType: &protocol.NetworkMessage_Signaling{
+					Signaling: &protocol.SignalingMessage{
+						TargetPeerId: peerID,
+						Message: &protocol.SignalingMessage_Offer{
+							Offer: &protocol.Offer{
+								Sdp: offer.SDP,
+							},
+						},
 					},
 				},
 			}
-
-			if err := d.TrackerRouter.WriteMessage(netMsg); err != nil {
-				d.Logger.Warnf("Error sending announce message: %v", err)
-				return
+			if sigErr := d.TrackerRouter.WriteMessage(signalingMsg); sigErr != nil {
+				d.Logger.Warnf("Failed to send offer: %v", sigErr)
 			}
-			d.Logger.Info("Successfully registered a new file with tracker")
 		}
+
+		d.Logger.Infof("Starting file download for file %s", parserFile.FileName)
+		d.startFileDownload(fileHash, fileTotalChunks)
+
+	case <-time.After(10 * time.Second):
+		d.Logger.Warn("Timeout waiting for peer list response")
 	}
+}
+
+func (d *Daemon) handleRegisterSignal(ctx context.Context, cliAddr string, registerSignal *protocol.NetworkMessage_SignalRegister) {
+	filePath := registerSignal.SignalRegister.GetFilePath()
+	d.Logger.Debugf("Received a new Register Signal from %s: %v", cliAddr, registerSignal)
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		d.Logger.Warnf("Error opening file: %v", err)
+		return
+	}
+	defer file.Close()
+
+	fileName := strings.Split(file.Name(), "/")[len(strings.Split(file.Name(), "/"))-1]
+	fileInfo, err := file.Stat()
+	if err != nil {
+		d.Logger.Warnf("Error getting file info: %v", err)
+		return
+	}
+	fileSize := fileInfo.Size()
+	fileTotalChunks := int((fileSize + maxChunkSize - 1) / maxChunkSize)
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		d.Logger.Warnf("Error copying file hash to hash: %v", err)
+		return
+	}
+	fileHash := fmt.Sprintf("%x", hash.Sum(nil))
+
+	d.Logger.Debugf("file: %s with size %d and hash %s", fileName, fileSize, fileHash)
+
+	dbFile, created, err := d.FileStore.CreateFile(ctx,
+		fileName,
+		fileSize,
+		maxChunkSize,
+		fileTotalChunks,
+		fileHash,
+	)
+	if err != nil && err != sql.ErrNoRows {
+		d.Logger.Warnf("Error creating file: %v", err)
+		return
+	}
+	if !created {
+		d.Logger.Info("file already registered with tracker")
+		return
+	}
+
+	d.Logger.Info("Attempting to create chunks with metadata...")
+
+	parserFile := &parser.ParserFile{
+		FileName:     fileName,
+		FileHash:     fileHash,
+		FileSize:     fmt.Sprintf("%d", fileSize),
+		MaxChunkSize: fmt.Sprintf("%d", maxChunkSize),
+		TotalChunks:  fmt.Sprintf("%d", fileTotalChunks),
+		Chunks:       make([]parser.ParserChunk, 0),
+	}
+	buffer := make([]byte, maxChunkSize)
+	chunkIndex := 0
+	if _, err := file.Seek(0, 0); err != nil {
+		d.Logger.Warnf("Error seeking to start of file: %v", err)
+		return
+	}
+	for {
+		chunkSize, readErr := file.Read(buffer)
+		if readErr != nil && readErr != io.EOF {
+			d.Logger.Warnf("Error reading buffer: %v", readErr)
+			return
+		}
+		if chunkSize == 0 {
+			break
+		}
+
+		chunkHash := utils.GenerateHash(buffer[:chunkSize])
+		if _, chunkErr := d.ChunkStore.CreateChunk(ctx, dbFile.ID, chunkIndex, chunkSize, chunkHash, true); chunkErr != nil {
+			d.Logger.Warnf("Error creating chunk: %v", chunkErr)
+			return
+		}
+		d.Logger.Debugf("chunk %d: %s with size %d", chunkIndex, chunkHash, chunkSize)
+		parserFile.Chunks = append(parserFile.Chunks, parser.ParserChunk{
+			ChunkIndex: fmt.Sprintf("%d", chunkIndex),
+			ChunkHash:  chunkHash,
+			ChunkSize:  fmt.Sprintf("%d", chunkSize),
+		})
+		chunkIndex++
+	}
+
+	// Copy the file to downloads
+	downloadDirPath := fmt.Sprintf("downloads/daemon-%s/", d.IPCSocketIndex)
+	if err := os.MkdirAll(downloadDirPath, os.ModePerm); err != nil {
+		d.Logger.Warnf("Error creating directory: %v", err)
+		return
+	}
+
+	createdFile, err := os.Create(downloadDirPath + fileName)
+	if err != nil {
+		d.Logger.Warnf("Error creating file: %v", err)
+		return
+	}
+	defer createdFile.Close()
+
+	if _, err := file.Seek(0, 0); err != nil {
+		d.Logger.Warnf("Error seeking to start of file: %v", err)
+		return
+	}
+	if _, err = io.Copy(createdFile, file); err != nil {
+		d.Logger.Warnf("Error copying file: %v", err)
+		return
+	}
+
+	// Create a .p2p file with the file metadata
+	if err := parser.GenerateP2PFile(parserFile, downloadDirPath+fileName+".p2p"); err != nil {
+		d.Logger.Warnf("Error generating .p2p file: %v", err)
+		return
+	}
+
+	// Send announce message to tracker
+	fileInfoMsgs := []*protocol.FileInfo{
+		{
+			FileSize:    dbFile.Size,
+			ChunkSize:   int32(dbFile.MaxChunkSize),
+			FileHash:    dbFile.Hash,
+			TotalChunks: int32(dbFile.TotalChunks),
+		},
+	}
+	d.Logger.Infof("Preparing to send Announce message to Tracker with newly created file: %v", fileInfoMsgs)
+
+	netMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_Announce{
+			Announce: &protocol.AnnounceMessage{
+				Files: fileInfoMsgs,
+			},
+		},
+	}
+
+	if err := d.TrackerRouter.WriteMessage(netMsg); err != nil {
+		d.Logger.Warnf("Error sending announce message: %v", err)
+		return
+	}
+	d.Logger.Info("Successfully registered a new file with tracker")
 }

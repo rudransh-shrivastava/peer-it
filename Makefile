@@ -19,6 +19,8 @@ check:
 clean:
 	@rm -rf bin
 
+generate: protoc sqlc
+
 protoc: $(PROTO_OUT)
 
 run-client: build-client
@@ -29,6 +31,9 @@ run-daemon: build-client
 
 run-tracker: build-tracker
 	@./$(TRACKER_BINARY)
+
+sqlc:
+	@sqlc generate
 
 $(PROTO_OUT): $(PROTO_FILE)
 	@protoc --go_out=. --go_opt=paths=source_relative $<

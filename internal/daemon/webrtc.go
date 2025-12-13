@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -37,7 +38,7 @@ func (d *Daemon) handleWebRTCConnection(peerId string, fileHash string, config w
 			d.Logger.Debugf("Data channel '%s'-'%d' open", dc.Label(), dc.ID())
 			if isInitiator {
 				d.Logger.Infof("Sending chunk maps for file: %s", fileHash)
-				file, err := d.FileStore.GetFileByHash(fileHash)
+				file, err := d.FileStore.GetFileByHash(context.Background(), fileHash)
 				if err != nil {
 					d.Logger.Errorf("Failed to get file: %v", err)
 					return

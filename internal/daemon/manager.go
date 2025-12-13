@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -13,7 +14,7 @@ import (
 type FileDownload struct {
 	FileHash     string
 	TotalChunks  int
-	ActivePeers  map[string]bool // peer IDs that have the file
+	ActivePeers  map[string]bool
 	mu           sync.Mutex
 	downloadDone chan struct{}
 }
@@ -38,20 +39,20 @@ func (d *Daemon) startFileDownload(fileHash string, totalChunks int) {
 }
 
 func (d *Daemon) downloadManager(dl *FileDownload) {
+	ctx := context.Background()
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		chunks, err := d.ChunkStore.GetChunks(dl.FileHash)
+		chunks, err := d.ChunkStore.GetChunks(ctx, dl.FileHash)
 		if err != nil {
 			d.Logger.Errorf("Error checking chunks: %v", err)
 			continue
 		}
 
-		// Check if download complete
 		complete := true
-		for _, chunk := range *chunks {
-			if !chunk.IsAvailable {
+		for _, chunk := range chunks {
+			if chunk.IsAvailable != 1 {
 				complete = false
 				break
 			}
@@ -66,7 +67,6 @@ func (d *Daemon) downloadManager(dl *FileDownload) {
 			return
 		}
 
-		// Request missing chunks
 		dl.mu.Lock()
 		if len(dl.ActivePeers) > 0 {
 			d.requestOneMissingChunk(dl.FileHash)
@@ -76,17 +76,16 @@ func (d *Daemon) downloadManager(dl *FileDownload) {
 }
 
 func (d *Daemon) requestOneMissingChunk(fileHash string) {
-	localChunks, err := d.ChunkStore.GetChunks(fileHash)
+	ctx := context.Background()
+	localChunks, err := d.ChunkStore.GetChunks(ctx, fileHash)
 	if err != nil {
 		d.Logger.Errorf("Error getting local chunks: %v", err)
 		return
 	}
 
-	// Find first missing chunk
-	// TODO: Implement a better strategy for selecting missing chunks
 	var missingChunkIndex int32 = -1
-	for i, chunk := range *localChunks {
-		if !chunk.IsAvailable {
+	for i, chunk := range localChunks {
+		if chunk.IsAvailable != 1 {
 			missingChunkIndex = int32(i)
 			break
 		}
@@ -96,7 +95,6 @@ func (d *Daemon) requestOneMissingChunk(fileHash string) {
 		return
 	}
 
-	// Get eligible peers for this chunk
 	var eligiblePeers []string
 	for peerID, peerFiles := range d.PeerChunkMap {
 		if chunks, exists := peerFiles[fileHash]; exists {
@@ -110,7 +108,6 @@ func (d *Daemon) requestOneMissingChunk(fileHash string) {
 		return
 	}
 
-	// Select a random peer
 	selectedPeer := eligiblePeers[rand.Intn(len(eligiblePeers))]
 	d.Logger.Infof("Selecting peer %s to request chunk: %d", selectedPeer, missingChunkIndex)
 
@@ -123,7 +120,6 @@ func (d *Daemon) requestOneMissingChunk(fileHash string) {
 		},
 	}
 
-	// Check if peer still connected
 	if _, exists := d.PeerDataChannels[selectedPeer]; !exists {
 		d.Logger.Warnf("Peer %s disconnected, skipping chunk request", selectedPeer)
 		return

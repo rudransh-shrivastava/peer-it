@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -10,27 +11,28 @@ import (
 )
 
 func (d *Daemon) GetChunkMap(fileHash string) []int32 {
-	file, err := d.FileStore.GetFileByHash(fileHash)
+	ctx := context.Background()
+	file, err := d.FileStore.GetFileByHash(ctx, fileHash)
 	if err != nil {
 		d.Logger.Warnf("failed to get file: %v", err)
 		return nil
 	}
-	chunks, err := d.ChunkStore.GetChunks(fileHash)
+	chunks, err := d.ChunkStore.GetChunks(ctx, fileHash)
 	if err != nil {
 		d.Logger.Warnf("failed to get chunks: %v", err)
 		return nil
 	}
 
 	chunksMap := make([]int32, file.TotalChunks)
-	for _, chunk := range *chunks {
-		if chunk.IsAvailable {
+	for _, chunk := range chunks {
+		if chunk.IsAvailable == 1 {
 			chunksMap[chunk.ChunkIndex] = 1
 		}
 	}
 	return chunksMap
 }
+
 func (d *Daemon) sendIntroduction(peerID string, fileHash string) error {
-	// Get chunk availability
 	chunksMap := d.GetChunkMap(fileHash)
 
 	introMsg := &protocol.NetworkMessage{
@@ -60,8 +62,9 @@ func (d *Daemon) sendIntroduction(peerID string, fileHash string) error {
 	return nil
 }
 
-func (d *Daemon) readChunkFromFile(fileHash string, chunkIndex int, chunkSize int, maxChunkSize int) ([]byte, error) {
-	fileName, err := d.FileStore.GetFileNameByHash(fileHash)
+func (d *Daemon) readChunkFromFile(fileHash string, chunkIndex int, chunkSize int, maxChunkSz int) ([]byte, error) {
+	ctx := context.Background()
+	fileName, err := d.FileStore.GetFileNameByHash(ctx, fileHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file name: %v", err)
 	}
@@ -73,7 +76,7 @@ func (d *Daemon) readChunkFromFile(fileHash string, chunkIndex int, chunkSize in
 		return nil, fmt.Errorf("failed to open file: %v", err)
 	}
 	defer file.Close()
-	offset := int64(chunkIndex * maxChunkSize)
+	offset := int64(chunkIndex * maxChunkSz)
 	_, err = file.Seek(offset, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to seek file: %v", err)
@@ -87,28 +90,25 @@ func (d *Daemon) readChunkFromFile(fileHash string, chunkIndex int, chunkSize in
 }
 
 func (d *Daemon) handleChunkRequest(peerID string, msg *protocol.ChunkRequest) {
+	ctx := context.Background()
 	d.Logger.Infof("Handling chunk request from peer %s for file %s, chunk %d", peerID, msg.FileHash, msg.ChunkIndex)
 
-	// Check if we have the chunk
-	chunk, err := d.ChunkStore.GetChunk(msg.FileHash, int(msg.ChunkIndex))
+	chunk, err := d.ChunkStore.GetChunk(ctx, msg.FileHash, int(msg.ChunkIndex))
 	if err != nil {
 		d.Logger.Warnf("Failed to get chunk: %v", err)
 		return
 	}
-	if !chunk.IsAvailable {
+	if chunk.IsAvailable != 1 {
 		d.Logger.Warnf("Chunk not available: %d", msg.ChunkIndex)
 		return
 	}
-	chunkIndex := chunk.ChunkIndex
-	chunkSize := chunk.ChunkSize
-	// Read chunk data from index to size from the file directly
-	chunkData, err := d.readChunkFromFile(msg.FileHash, chunkIndex, chunkSize, maxChunkSize)
+
+	chunkData, err := d.readChunkFromFile(msg.FileHash, int(chunk.ChunkIndex), int(chunk.ChunkSize), maxChunkSize)
 	if err != nil {
 		d.Logger.Warnf("Failed to read chunk from file: %v", err)
 		return
 	}
 
-	// Send the chunk
 	chunkMsg := &protocol.NetworkMessage{
 		MessageType: &protocol.NetworkMessage_ChunkResponse{
 			ChunkResponse: &protocol.ChunkResponse{
@@ -138,15 +138,14 @@ func (d *Daemon) handleChunkRequest(peerID string, msg *protocol.ChunkRequest) {
 	}
 }
 
-func (d *Daemon) handleChunkResponse(peerId string, msg *protocol.ChunkResponse) {
-	logMsg := fmt.Sprintf("Got chunk %d from peer %s", msg.ChunkIndex, peerId)
+func (d *Daemon) handleChunkResponse(peerID string, msg *protocol.ChunkResponse) {
+	ctx := context.Background()
+	logMsg := fmt.Sprintf("Got chunk %d from peer %s", msg.ChunkIndex, peerID)
 	d.messageCLI(logMsg)
-	incrMsg := "progress"
-	d.messageCLI(incrMsg)
-	d.Logger.Infof("Received chunk response from peer %s for file %s, chunk %d", peerId, msg.FileHash, msg.ChunkIndex)
+	d.messageCLI("progress")
+	d.Logger.Infof("Received chunk response from peer %s for file %s, chunk %d", peerID, msg.FileHash, msg.ChunkIndex)
 
-	// Write the chunk to the file
-	fileName, err := d.FileStore.GetFileNameByHash(msg.FileHash)
+	fileName, err := d.FileStore.GetFileNameByHash(ctx, msg.FileHash)
 	if err != nil {
 		d.Logger.Warnf("Failed to get file name: %v", err)
 		return
@@ -168,70 +167,61 @@ func (d *Daemon) handleChunkResponse(peerId string, msg *protocol.ChunkResponse)
 		return
 	}
 
-	// before writing verify the chunk data from chunk store
 	_, err = file.Write(msg.ChunkData)
 	if err != nil {
 		d.Logger.Warnf("Failed to write chunk to file: %v", err)
 		return
 	}
 
-	// set our map to reflect that we have the chunk
 	d.mu.Lock()
 	d.PeerChunkMap[d.ID][msg.FileHash][msg.ChunkIndex] = 1
 	d.mu.Unlock()
 
-	// mark the chunk as available in the chunk store
-	if err := d.ChunkStore.MarkChunkAvailable(msg.FileHash, int(msg.ChunkIndex)); err != nil {
+	if err := d.ChunkStore.MarkChunkAvailable(ctx, msg.FileHash, int(msg.ChunkIndex)); err != nil {
 		d.Logger.Warnf("Failed to mark chunk as available: %v", err)
 	}
 }
 
-func (d *Daemon) handleIntroduction(peerId string, msg *protocol.IntroductionMessage) {
-	d.Logger.Infof("Handling introduction from peer %s for file %s", peerId, msg.FileHash)
+func (d *Daemon) handleIntroduction(peerID string, msg *protocol.IntroductionMessage) {
+	d.Logger.Infof("Handling introduction from peer %s for file %s", peerID, msg.FileHash)
 	d.Logger.Infof("Received chunks map of length: %d", len(msg.ChunksMap))
-	logMsg := fmt.Sprintf("Connected to peer %s", peerId)
+	logMsg := fmt.Sprintf("Connected to peer %s", peerID)
 	d.messageCLI(logMsg)
-	// If its our first time receiving the chunks map
-	// we will need to send our chunks map
-	_, exists := d.PeerChunkMap[peerId][msg.FileHash]
+
+	_, exists := d.PeerChunkMap[peerID][msg.FileHash]
 	if !exists {
-		d.Logger.Infof("Sending our chunks map to peer %s for file %s", peerId, msg.FileHash)
-		err := d.sendIntroduction(peerId, msg.FileHash)
+		d.Logger.Infof("Sending our chunks map to peer %s for file %s", peerID, msg.FileHash)
+		err := d.sendIntroduction(peerID, msg.FileHash)
 		if err != nil {
 			d.Logger.Warnf("Failed to send introduction: %v", err)
 		}
 
 		d.mu.Lock()
-		d.PeerChunkMap[peerId] = make(map[string][]int32)
-		d.PeerChunkMap[peerId][msg.GetFileHash()] = msg.GetChunksMap()
+		d.PeerChunkMap[peerID] = make(map[string][]int32)
+		d.PeerChunkMap[peerID][msg.GetFileHash()] = msg.GetChunksMap()
 		d.mu.Unlock()
-
 	} else {
-		d.Logger.Infof("Chunks map already exists for peer %s for file %s", peerId, msg.FileHash)
+		d.Logger.Infof("Chunks map already exists for peer %s for file %s", peerID, msg.FileHash)
 
 		d.mu.Lock()
-		d.PeerChunkMap[peerId][msg.GetFileHash()] = msg.GetChunksMap()
+		d.PeerChunkMap[peerID][msg.GetFileHash()] = msg.GetChunksMap()
 		d.mu.Unlock()
 	}
 
-	d.Logger.Infof("Received chunk map from peer %s:%v for file: %s", peerId, msg.ChunksMap, msg.FileHash)
+	d.Logger.Infof("Received chunk map from peer %s:%v for file: %s", peerID, msg.ChunksMap, msg.FileHash)
 
-	// Add peer to our peer list
-	d.Logger.Infof("Adding peer %s to our swarm for file: %s", peerId, msg.GetFileHash())
-	d.addPeerToDownload(peerId, msg.GetFileHash())
+	d.Logger.Infof("Adding peer %s to our swarm for file: %s", peerID, msg.GetFileHash())
+	d.addPeerToDownload(peerID, msg.GetFileHash())
 }
 
 func (d *Daemon) messageCLI(msg string) {
 	d.Logger.Debugf("Sending LOG: %s to CLI", msg)
-	// Get CLI address from file hash
-	// get CLI router from CLI address
 	cliRouter := d.CLIRouter
 	if cliRouter == nil {
 		d.Logger.Warnf("CLI router not found")
 		return
 	}
 
-	// send message using CLI router
 	netMsg := &protocol.NetworkMessage{
 		MessageType: &protocol.NetworkMessage_Log{
 			Log: &protocol.LogMessage{

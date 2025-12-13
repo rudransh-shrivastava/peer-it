@@ -4,22 +4,15 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/prouter"
-	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
 
-// This client communicates with the daemon using unix sockets
 type Client struct {
-	DaemonConn net.Conn
-
-	FileStore  *store.FileStore
-	ChunkStore *store.ChunkStore
-
+	DaemonConn      net.Conn
 	IPCSocketIndex  string
 	Logger          *logrus.Logger
 	LogChan         chan *protocol.NetworkMessage_Log
@@ -28,16 +21,8 @@ type Client struct {
 }
 
 func NewClient(index string, logger *logrus.Logger) (*Client, error) {
-	db, err := db.NewDB(index)
-	if err != nil {
-		logger.Fatal(err)
-		return &Client{}, err
-	}
-
-	fileStore := store.NewFileStore(db)
-	chunkStore := store.NewChunkStore(db)
-	socketUrl := "/tmp/pit-daemon-" + index + ".sock"
-	conn, err := net.Dial("unix", socketUrl)
+	socketURL := "/tmp/pit-daemon-" + index + ".sock"
+	conn, err := net.Dial("unix", socketURL)
 	if err != nil {
 		logger.Fatal(err)
 		return &Client{}, err
@@ -47,17 +32,15 @@ func NewClient(index string, logger *logrus.Logger) (*Client, error) {
 	progressBarChan := make(chan int)
 	totalChunksChan := make(chan int)
 
-	prouter := prouter.NewMessageRouter(conn)
-	prouter.AddRoute(logChan, func(msg proto.Message) bool {
+	router := prouter.NewMessageRouter(conn)
+	router.AddRoute(logChan, func(msg proto.Message) bool {
 		_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Log)
 		return ok
 	})
-	prouter.Start()
+	router.Start()
 
 	return &Client{
 		DaemonConn:      conn,
-		FileStore:       fileStore,
-		ChunkStore:      chunkStore,
 		IPCSocketIndex:  index,
 		Logger:          logger,
 		LogChan:         logChan,
@@ -106,7 +89,7 @@ func (c *Client) ListenForDaemonLogs(done chan struct{}) {
 			return
 		}
 		if msg == "progress" {
-			c.ProgressBarChan <- 1 // 1 is any number, just to notify progress
+			c.ProgressBarChan <- 1
 			continue
 		}
 		if msg[0] == '+' {

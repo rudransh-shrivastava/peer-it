@@ -12,8 +12,8 @@ import (
 	"github.com/rudransh-shrivastava/peer-it/internal/client/db"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/prouter"
-	"github.com/rudransh-shrivastava/peer-it/internal/shared/store"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils/logger"
+	"github.com/rudransh-shrivastava/peer-it/internal/store"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
@@ -45,8 +45,8 @@ type Daemon struct {
 
 	PeerConnections  map[string]*webrtc.PeerConnection
 	PeerDataChannels map[string]*webrtc.DataChannel
-	PeerChunkMap     map[string]map[string][]int32 // peerID -> fileHash -> chunkMap
-	ActiveDownloads  map[string]*FileDownload      // fileHash -> FileDownload
+	PeerChunkMap     map[string]map[string][]int32
+	ActiveDownloads  map[string]*FileDownload
 
 	mu sync.Mutex
 }
@@ -57,14 +57,14 @@ type Channels struct {
 }
 
 func NewDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string) (*Daemon, error) {
-	db, err := db.NewDB(ipcSocketIndex)
+	sqlDB, err := db.NewDB(ipcSocketIndex)
 	if err != nil {
 		return &Daemon{}, err
 	}
-	fileStore := store.NewFileStore(db)
-	chunkStore := store.NewChunkStore(db)
+	fileStore := store.NewFileStore(sqlDB)
+	chunkStore := store.NewChunkStore(sqlDB)
 
-	logger := logger.NewLogger()
+	log := logger.NewLogger()
 	conn, err := net.Dial("tcp", trackerAddr)
 	if err != nil {
 		return &Daemon{}, err
@@ -94,15 +94,13 @@ func NewDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string) (
 	trackerProuter.Start()
 
 	return &Daemon{
-		Ctx:           ctx,
-		TrackerRouter: trackerProuter,
-		FileStore:     fileStore,
-		ChunkStore:    chunkStore,
-		// Pending requests maps a file hash with a channel that the listener
-		// will send the messsages to
+		Ctx:                       ctx,
+		TrackerRouter:             trackerProuter,
+		FileStore:                 fileStore,
+		ChunkStore:                chunkStore,
 		PendingPeerListRequests:   make(map[string]chan *protocol.NetworkMessage_PeerListResponse),
 		IPCSocketIndex:            ipcSocketIndex,
-		Logger:                    logger,
+		Logger:                    log,
 		TrackerPeerListResponseCh: peerListResponseCh,
 		TrackerIdMessageCh:        idMessageCh,
 		TrackerSignalingCh:        signalingMsgCh,
@@ -117,7 +115,6 @@ func NewDaemon(ctx context.Context, trackerAddr string, ipcSocketIndex string) (
 }
 
 func (d *Daemon) Start() {
-	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
@@ -137,21 +134,22 @@ func (d *Daemon) Start() {
 }
 
 func (d *Daemon) initDaemon() {
-	// Send an Announce message to the tracker the first time we connect
-	files, err := d.FileStore.GetFiles()
+	ctx := context.Background()
+
+	files, err := d.FileStore.GetFiles(ctx)
 	if err != nil {
 		d.Logger.Fatalf("Error getting files: %+v", err)
 		return
 	}
 	for _, file := range files {
-		chunks, err := d.ChunkStore.GetChunks(file.Hash)
+		chunks, err := d.ChunkStore.GetChunks(ctx, file.Hash)
 		if err != nil {
 			d.Logger.Fatalf("Error getting chunks: %+v", err)
 			return
 		}
 		chunkMap := make([]int32, file.TotalChunks)
-		for _, chunk := range *chunks {
-			if chunk.IsAvailable {
+		for _, chunk := range chunks {
+			if chunk.IsAvailable == 1 {
 				chunkMap[chunk.ChunkIndex] = 1
 			}
 		}
@@ -188,33 +186,9 @@ func (d *Daemon) initDaemon() {
 
 	d.Logger.Debugf("Sent initial Announce message to Tracker: %+v", announceMsg)
 
-	// // set our own chunks map
 	d.mu.Lock()
 	d.PeerChunkMap[d.ID] = make(map[string][]int32)
 	d.mu.Unlock()
-	// for _, file := range files {
-	// 	d.PeerChunkMap[d.ID][file.Hash] = make([]int32, file.TotalChunks)
-	// 	chunks, err := d.ChunkStore.GetChunks(file.Hash)
-	// 	if err != nil {
-	// 		d.Logger.Fatalf("Error getting chunks: %+v", err)
-	// 		return
-	// 	}
-	// 	d.Logger.Debugf("File: %s", file.Hash)
-	// 	d.Logger.Debugf("Chunks: %+v", chunks)
-	// 	d.Logger.Debugf("TotalChunks: %d", file.TotalChunks)
-	// 	d.Logger.Debugf("Our Map :%+v", d.PeerChunkMap[d.ID][file.Hash])
 
-	// 	chunkMap := make([]int32, file.TotalChunks)
-	// 	for _, chunk := range *chunks {
-	// 		if chunk.IsAvailable {
-	// 			chunkMap[chunk.ChunkIndex] = 1
-	// 		}
-	// 	}
-	// 	d.PeerChunkMap[d.ID][file.Hash] = chunkMap
-	// 	d.Logger.Debugf("Updated Map :%+v", d.PeerChunkMap[d.ID][file.Hash])
-	// }
-	// d.mu.Unlock()
-
-	// Send heartbeats every n seconds
 	go d.sendHeartBeatsToTracker()
 }

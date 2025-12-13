@@ -1,31 +1,11 @@
 package db
 
 import (
-	"github.com/glebarez/sqlite"
-	"github.com/rudransh-shrivastava/peer-it/internal/shared/schema"
-	"gorm.io/gorm"
+	"database/sql"
+
+	peerdb "github.com/rudransh-shrivastava/peer-it/internal/db"
 )
 
-func NewDB() (*gorm.DB, error) {
-	database, err := gorm.Open(sqlite.Open("tracker.sqlite3"), &gorm.Config{
-		PrepareStmt: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	sqlDB, err := database.DB()
-	if err != nil {
-		return nil, err
-	}
-
-	if _, err := sqlDB.Exec("PRAGMA foreign_keys = ON"); err != nil {
-		return nil, err
-	}
-
-	if err := database.AutoMigrate(&schema.File{}, &schema.Peer{}, &schema.Swarm{}); err != nil {
-		return nil, err
-	}
-
-	return database, nil
+func NewDB() (*sql.DB, error) {
+	return peerdb.Open("tracker.sqlite3")
 }
