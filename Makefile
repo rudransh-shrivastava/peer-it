@@ -42,6 +42,11 @@ run-tracker: tracker
 		@echo "Running tracker..."
 		@./$(TRACKER_BINARY_PATH)
 
+.PHONY: check
+check:
+		@echo "Running pre-commit checks..."
+		@pre-commit run -a
+
 .PHONY: clean
 clean:
 		@echo "Cleaning up..."
