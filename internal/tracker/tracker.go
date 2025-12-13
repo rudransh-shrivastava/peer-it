@@ -20,42 +20,40 @@ const (
 )
 
 type Tracker struct {
-	PeerStore  *store.PeerStore
-	FileStore  *store.FileStore
-	ChunkStore *store.ChunkStore
-
-	Logger   *logrus.Logger
-	Channels map[string]Channels
-
+	Channels      map[string]Channels
+	ChunkStore    *store.ChunkStore
 	DaemonRouters map[string]*prouter.MessageRouter
+	FileStore     *store.FileStore
+	Logger        *logrus.Logger
+	PeerStore     *store.PeerStore
 }
 
 type Channels struct {
-	HeartbeatCh       chan *protocol.NetworkMessage_Heartbeat
-	GoodbyeCh         chan *protocol.NetworkMessage_Goodbye
 	AnnounceCh        chan *protocol.NetworkMessage_Announce
+	GoodbyeCh         chan *protocol.NetworkMessage_Goodbye
+	HeartbeatCh       chan *protocol.NetworkMessage_Heartbeat
 	PeerListRequestCh chan *protocol.NetworkMessage_PeerListRequest
 	SignalingCh       chan *protocol.NetworkMessage_Signaling
 }
 
 func NewTracker() *Tracker {
-	logger := logger.NewLogger()
-	db, err := db.NewDB()
+	log := logger.NewLogger()
+	database, err := db.NewDB()
 	if err != nil {
-		logger.Fatal(err)
+		log.Fatal(err)
 		return &Tracker{}
 	}
-	peerStore := store.NewPeerStore(db)
-	fileStore := store.NewFileStore(db)
-	chunkStore := store.NewChunkStore(db)
+	peerStore := store.NewPeerStore(database)
+	fileStore := store.NewFileStore(database)
+	chunkStore := store.NewChunkStore(database)
 
 	return &Tracker{
-		PeerStore:     peerStore,
-		FileStore:     fileStore,
-		ChunkStore:    chunkStore,
-		Logger:        logger,
 		Channels:      make(map[string]Channels),
+		ChunkStore:    chunkStore,
 		DaemonRouters: make(map[string]*prouter.MessageRouter),
+		FileStore:     fileStore,
+		Logger:        log,
+		PeerStore:     peerStore,
 	}
 }
 
@@ -83,101 +81,104 @@ func (t *Tracker) Start() {
 		peerListRequestCh := make(chan *protocol.NetworkMessage_PeerListRequest, 100)
 		signalingCh := make(chan *protocol.NetworkMessage_Signaling, 100)
 		channels := Channels{
-			HeartbeatCh:       heartbeatCh,
-			GoodbyeCh:         goodbyeCh,
 			AnnounceCh:        announceCh,
+			GoodbyeCh:         goodbyeCh,
+			HeartbeatCh:       heartbeatCh,
 			PeerListRequestCh: peerListRequestCh,
 			SignalingCh:       signalingCh,
 		}
 		t.Channels[conn.RemoteAddr().String()] = channels
-		prouter := prouter.NewMessageRouter(conn)
-		prouter.AddRoute(heartbeatCh, func(msg proto.Message) bool {
+		router := prouter.NewMessageRouter(conn)
+		router.AddRoute(heartbeatCh, func(msg proto.Message) bool {
 			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Heartbeat)
 			return ok
 		})
-		prouter.AddRoute(goodbyeCh, func(msg proto.Message) bool {
+		router.AddRoute(goodbyeCh, func(msg proto.Message) bool {
 			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Goodbye)
 			return ok
 		})
-		prouter.AddRoute(announceCh, func(msg proto.Message) bool {
+		router.AddRoute(announceCh, func(msg proto.Message) bool {
 			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Announce)
 			return ok
 		})
-		prouter.AddRoute(peerListRequestCh, func(msg proto.Message) bool {
+		router.AddRoute(peerListRequestCh, func(msg proto.Message) bool {
 			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_PeerListRequest)
 			return ok
 		})
-		prouter.AddRoute(signalingCh, func(msg proto.Message) bool {
+		router.AddRoute(signalingCh, func(msg proto.Message) bool {
 			_, ok := msg.(*protocol.NetworkMessage).MessageType.(*protocol.NetworkMessage_Signaling)
 			return ok
 		})
 
 		// Listen for incoming msgs
-		go prouter.Start()
-		go t.handleDaemonMsgs(prouter)
+		go router.Start()
+		go t.handleDaemonMsgs(router)
 	}
 }
 
-func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
-	daemonAddr := prouter.Conn.RemoteAddr().String()
-	daemonIP, daemonPort, _ := net.SplitHostPort(prouter.Conn.RemoteAddr().String())
-	t.Logger.Infof("New peer connected: %s:%s\n", daemonIP, daemonPort)
-	daemonId, err := t.PeerStore.CreatePeer(daemonIP, daemonPort)
-
-	idNetMsg := &protocol.NetworkMessage{
-		MessageType: &protocol.NetworkMessage_Id{
-			Id: &protocol.IDMessage{
-				Id: daemonId,
-			},
-		},
+func (t *Tracker) handleDaemonMsgs(router *prouter.MessageRouter) {
+	daemonAddr := router.Conn.RemoteAddr().String()
+	daemonIP, daemonPort, err := net.SplitHostPort(router.Conn.RemoteAddr().String())
+	if err != nil {
+		t.Logger.Warnf("Error parsing daemon address: %v", err)
+		return
 	}
-	prouter.WriteMessage(idNetMsg)
-	t.Logger.Infof("Sent %s back its ID: %s", daemonAddr, daemonId)
+	t.Logger.Infof("New peer connected: %s:%s", daemonIP, daemonPort)
+	daemonID, err := t.PeerStore.CreatePeer(daemonIP, daemonPort)
 	if err != nil {
 		t.Logger.Warnf("Error creating peer: %v", err)
 		return
 	}
 
-	t.DaemonRouters[daemonId] = prouter
+	idNetMsg := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_Id{
+			Id: &protocol.IDMessage{
+				Id: daemonID,
+			},
+		},
+	}
+	if err := router.WriteMessage(idNetMsg); err != nil {
+		t.Logger.Warnf("Error sending ID message: %v", err)
+		return
+	}
+	t.Logger.Infof("Sent %s back its ID: %s", daemonAddr, daemonID)
+
+	t.DaemonRouters[daemonID] = router
 
 	// Start a timer to track client timeout
 	timeout := time.NewTicker(ClientTimeout * time.Second)
 	defer timeout.Stop()
 	channels, exists := t.Channels[daemonAddr]
 	if !exists {
-		t.Logger.Warn("Daemon channels do not existw")
+		t.Logger.Warn("Daemon channels do not exist")
 		return
 	}
-
-	// Send it back its ID
 
 	for {
 		select {
 		// If the client times out, delete the client from the db
 		case <-timeout.C:
-			t.Logger.Infof("Peer %s timed out, deleting \n", daemonAddr)
-			delete(t.DaemonRouters, daemonId) // remove if issue occur
-			err := t.PeerStore.DeletePeer(daemonIP, daemonPort)
-			if err != nil {
+			t.Logger.Infof("Peer %s timed out, deleting", daemonAddr)
+			delete(t.DaemonRouters, daemonID)
+			if err := t.PeerStore.DeletePeer(daemonIP, daemonPort); err != nil {
 				t.Logger.Warnf("Error deleting peer: %v", err)
 			}
 			return
 
 		case signalingMsg := <-channels.SignalingCh:
-			targetPeerId := signalingMsg.Signaling.GetTargetPeerId()
+			targetPeerID := signalingMsg.Signaling.GetTargetPeerId()
 			forwardMsg := &protocol.NetworkMessage{
 				MessageType: &protocol.NetworkMessage_Signaling{
 					Signaling: &protocol.SignalingMessage{
-						SourcePeerId: daemonId,
-						TargetPeerId: targetPeerId,
+						SourcePeerId: daemonID,
+						TargetPeerId: targetPeerID,
 						Message:      signalingMsg.Signaling.GetMessage(),
 					},
 				},
 			}
 
-			if targetRouter, exists := t.DaemonRouters[targetPeerId]; exists {
-				err = targetRouter.WriteMessage(forwardMsg)
-				if err != nil {
+			if targetRouter, ok := t.DaemonRouters[targetPeerID]; ok {
+				if err := targetRouter.WriteMessage(forwardMsg); err != nil {
 					t.Logger.Warnf("Error forwarding signaling message: %v", err)
 				}
 			}
@@ -187,9 +188,10 @@ func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
 
 		case <-channels.GoodbyeCh:
 			// Remove the client from db
-			t.PeerStore.DeletePeer(daemonIP, daemonPort)
+			if err := t.PeerStore.DeletePeer(daemonIP, daemonPort); err != nil {
+				t.Logger.Warnf("Error deleting peer on goodbye: %v", err)
+			}
 			t.Logger.Infof("Peer %s disconnected", daemonAddr)
-			// prouter.Stop()
 			return
 
 		case announce := <-channels.AnnounceCh:
@@ -199,73 +201,77 @@ func (t *Tracker) handleDaemonMsgs(prouter *prouter.MessageRouter) {
 				totalChunks := int(file.GetTotalChunks())
 				maxChunkSize := int(file.GetChunkSize())
 				schemaFile := &schema.File{
+					CreatedAt:    time.Now().Unix(),
+					Hash:         file.GetFileHash(),
+					MaxChunkSize: maxChunkSize,
 					Name:         file.GetFileName(),
 					Size:         file.GetFileSize(),
-					MaxChunkSize: maxChunkSize,
 					TotalChunks:  totalChunks,
-					Hash:         file.GetFileHash(),
-					CreatedAt:    time.Now().Unix(),
 				}
-				created, err := t.FileStore.CreateFile(schemaFile)
-				if err != nil {
-					t.Logger.Fatalf("Error creating file: %v", err)
+				created, createErr := t.FileStore.CreateFile(schemaFile)
+				if createErr != nil {
+					t.Logger.Fatalf("Error creating file: %v", createErr)
 				}
 				if !created {
-					// File already existed in db
 					t.Logger.Debugf("File %+v already exists, adding peer to swarm", schemaFile)
 				} else {
-					t.Logger.Debugf("Registered file: %s, Size: %d, Chunks: %d Max Chunk Size: %d", file.GetFileHash(), file.GetFileSize(), file.GetTotalChunks(), file.GetChunkSize())
+					t.Logger.Debugf("Registered file: %s, Size: %d, Chunks: %d Max Chunk Size: %d",
+						file.GetFileHash(), file.GetFileSize(), file.GetTotalChunks(), file.GetChunkSize())
 				}
 				// Add client to swarm of peers
-				err = t.PeerStore.AddPeerToSwarm(daemonIP, daemonPort, file.GetFileHash())
+				if swarmErr := t.PeerStore.AddPeerToSwarm(daemonIP, daemonPort, file.GetFileHash()); swarmErr != nil {
+					t.Logger.Warnf("Error adding peer to swarm: %v", swarmErr)
+				}
 			}
 
 		case peerListRequest := <-channels.PeerListRequestCh:
-			t.Logger.Debugf("Received peer list request from %s: %v", daemonAddr, peerListRequest.PeerListRequest)
-			fileHash := peerListRequest.PeerListRequest.GetFileHash()
-
-			dbPeers, err := t.PeerStore.GetPeersByFileHash(fileHash)
-			if err != nil {
-				t.Logger.Fatalf("Error getting peers: %v", err)
-			}
-
-			peers := make([]*protocol.PeerInfo, 0)
-			for _, peer := range dbPeers {
-				if peer.IPAddress == daemonIP && peer.Port == daemonPort {
-					t.Logger.Debugf("Skipping %s", daemonAddr)
-					t.Logger.Debugf("Skipped: %+v", peer)
-					continue
-				}
-
-				peers = append(peers, &protocol.PeerInfo{
-					Id: strconv.Itoa(int(peer.ID)),
-				})
-			}
-			peerListResponse := &protocol.PeerListResponse{
-				FileHash:    fileHash,
-				TotalChunks: 0,
-				ChunkSize:   0,
-				Peers:       peers,
-			}
-			response := &protocol.NetworkMessage{
-				MessageType: &protocol.NetworkMessage_PeerListResponse{
-					PeerListResponse: peerListResponse,
-				},
-			}
-			t.Logger.Debugf("Sending back the peers list to %s : %+v", daemonAddr, peerListResponse)
-			prouter.WriteMessage(response)
-			if err != nil {
-				t.Logger.Warnf("Error sending peer list response: %v", err)
-			}
+			t.handlePeerListRequest(router, daemonAddr, daemonIP, daemonPort, peerListRequest)
 		}
 	}
 }
 
-func (t *Tracker) Stop() {
-	// cleanup peers
-	t.Logger.Infof("Stopping the tracker...")
-	err := t.PeerStore.DropAllPeers()
+func (t *Tracker) handlePeerListRequest(router *prouter.MessageRouter, daemonAddr, daemonIP, daemonPort string, peerListRequest *protocol.NetworkMessage_PeerListRequest) {
+	t.Logger.Debugf("Received peer list request from %s: %v", daemonAddr, peerListRequest.PeerListRequest)
+	fileHash := peerListRequest.PeerListRequest.GetFileHash()
+
+	dbPeers, err := t.PeerStore.GetPeersByFileHash(fileHash)
 	if err != nil {
-		t.Logger.Warnf("Error deleting all peers %v", err)
+		t.Logger.Errorf("Error getting peers: %v", err)
+		return
+	}
+
+	peers := make([]*protocol.PeerInfo, 0, len(dbPeers))
+	for _, peer := range dbPeers {
+		if peer.IPAddress == daemonIP && peer.Port == daemonPort {
+			t.Logger.Debugf("Skipping self: %s", daemonAddr)
+			continue
+		}
+
+		peers = append(peers, &protocol.PeerInfo{
+			Id: strconv.Itoa(int(peer.ID)),
+		})
+	}
+
+	peerListResponse := &protocol.PeerListResponse{
+		ChunkSize:   0,
+		FileHash:    fileHash,
+		Peers:       peers,
+		TotalChunks: 0,
+	}
+	response := &protocol.NetworkMessage{
+		MessageType: &protocol.NetworkMessage_PeerListResponse{
+			PeerListResponse: peerListResponse,
+		},
+	}
+	t.Logger.Debugf("Sending back the peers list to %s: %+v", daemonAddr, peerListResponse)
+	if err := router.WriteMessage(response); err != nil {
+		t.Logger.Warnf("Error sending peer list response: %v", err)
+	}
+}
+
+func (t *Tracker) Stop() {
+	t.Logger.Infof("Stopping the tracker...")
+	if err := t.PeerStore.DropAllPeers(); err != nil {
+		t.Logger.Warnf("Error deleting all peers: %v", err)
 	}
 }

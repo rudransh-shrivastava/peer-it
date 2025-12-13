@@ -15,25 +15,23 @@ func NewChunkStore(db *gorm.DB) *ChunkStore {
 
 func (cs *ChunkStore) CreateChunk(file *schema.File, size int, index int, hash string, isAvailable bool) error {
 	chunk := schema.Chunk{
-		File:        *(file),
+		ChunkHash:   hash,
 		ChunkIndex:  index,
 		ChunkSize:   size,
-		ChunkHash:   hash,
+		File:        *file,
 		IsAvailable: isAvailable,
 	}
-	err := cs.DB.Create(&chunk).Error
-	if err != nil {
-		return err
-	}
-	return nil
+	return cs.DB.Create(&chunk).Error
 }
 
 func (cs *ChunkStore) GetChunk(fileHash string, chunkIndex int) (*schema.Chunk, error) {
 	file := &schema.File{}
-	err := cs.DB.First(&file, "hash = ?", fileHash).Error
+	if err := cs.DB.First(&file, "hash = ?", fileHash).Error; err != nil {
+		return nil, err
+	}
+
 	chunk := schema.Chunk{}
-	err = cs.DB.First(&chunk, "file_id = ? AND chunk_index = ?", file.ID, chunkIndex).Error
-	if err != nil {
+	if err := cs.DB.First(&chunk, "file_id = ? AND chunk_index = ?", file.ID, chunkIndex).Error; err != nil {
 		return nil, err
 	}
 
@@ -42,23 +40,29 @@ func (cs *ChunkStore) GetChunk(fileHash string, chunkIndex int) (*schema.Chunk, 
 
 func (cs *ChunkStore) GetChunks(fileHash string) (*[]schema.Chunk, error) {
 	file := &schema.File{}
-	err := cs.DB.First(&file, "hash = ?", fileHash).Error
-	chunks := []schema.Chunk{}
-	err = cs.DB.Find(&chunks, "file_id = ?", file.ID).Error
-	if err != nil {
+	if err := cs.DB.First(&file, "hash = ?", fileHash).Error; err != nil {
 		return nil, err
 	}
+
+	chunks := []schema.Chunk{}
+	if err := cs.DB.Find(&chunks, "file_id = ?", file.ID).Error; err != nil {
+		return nil, err
+	}
+
 	return &chunks, nil
 }
 
-func (cs *ChunkStore) MarkChunkAvailable(filehash string, chunkIndex int) error {
+func (cs *ChunkStore) MarkChunkAvailable(fileHash string, chunkIndex int) error {
 	file := &schema.File{}
-	err := cs.DB.First(&file, "hash = ?", filehash).Error
-	chunk := schema.Chunk{}
-	err = cs.DB.First(&chunk, "file_id = ? AND chunk_index = ?", file.ID, chunkIndex).Error
-	if err != nil {
+	if err := cs.DB.First(&file, "hash = ?", fileHash).Error; err != nil {
 		return err
 	}
+
+	chunk := schema.Chunk{}
+	if err := cs.DB.First(&chunk, "file_id = ? AND chunk_index = ?", file.ID, chunkIndex).Error; err != nil {
+		return err
+	}
+
 	chunk.IsAvailable = true
 	return cs.DB.Save(&chunk).Error
 }

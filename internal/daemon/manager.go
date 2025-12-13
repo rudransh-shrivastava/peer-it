@@ -41,40 +41,37 @@ func (d *Daemon) downloadManager(dl *FileDownload) {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			chunks, err := d.ChunkStore.GetChunks(dl.FileHash)
-			if err != nil {
-				d.Logger.Errorf("Error checking chunks: %v", err)
-				continue
-			}
-
-			// Check if download complete
-			complete := true
-			for _, chunk := range *chunks {
-				if !chunk.IsAvailable {
-					complete = false
-					break
-				}
-			}
-
-			if complete {
-				d.Logger.Infof("Download %s complete", dl.FileHash)
-				d.mu.Lock()
-				delete(d.ActiveDownloads, dl.FileHash)
-				d.mu.Unlock()
-				d.messageCLI("done")
-				return
-			}
-
-			// Request missing chunks
-			dl.mu.Lock()
-			if len(dl.ActivePeers) > 0 {
-				d.requestOneMissingChunk(dl.FileHash)
-			}
-			dl.mu.Unlock()
+	for range ticker.C {
+		chunks, err := d.ChunkStore.GetChunks(dl.FileHash)
+		if err != nil {
+			d.Logger.Errorf("Error checking chunks: %v", err)
+			continue
 		}
+
+		// Check if download complete
+		complete := true
+		for _, chunk := range *chunks {
+			if !chunk.IsAvailable {
+				complete = false
+				break
+			}
+		}
+
+		if complete {
+			d.Logger.Infof("Download %s complete", dl.FileHash)
+			d.mu.Lock()
+			delete(d.ActiveDownloads, dl.FileHash)
+			d.mu.Unlock()
+			d.messageCLI("done")
+			return
+		}
+
+		// Request missing chunks
+		dl.mu.Lock()
+		if len(dl.ActivePeers) > 0 {
+			d.requestOneMissingChunk(dl.FileHash)
+		}
+		dl.mu.Unlock()
 	}
 }
 

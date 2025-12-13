@@ -15,17 +15,19 @@ func NewPeerStore(db *gorm.DB) *PeerStore {
 	return &PeerStore{DB: db}
 }
 
-// returns id and error
+// CreatePeer creates a new peer and returns its ID.
 func (ps *PeerStore) CreatePeer(ip string, port string) (string, error) {
 	peer := schema.Peer{IPAddress: ip, Port: port}
-	err := ps.DB.Create(&peer).Error
-	if err != nil {
+	if err := ps.DB.Create(&peer).Error; err != nil {
 		return "", err
 	}
+
 	searchPeer := schema.Peer{}
-	err = ps.DB.First(&searchPeer, "ip_address = ? AND port = ?", ip, port).Error
-	id := searchPeer.ID
-	return strconv.Itoa(int(id)), nil
+	if err := ps.DB.First(&searchPeer, "ip_address = ? AND port = ?", ip, port).Error; err != nil {
+		return "", err
+	}
+
+	return strconv.Itoa(int(searchPeer.ID)), nil
 }
 
 func (ps *PeerStore) DeletePeer(ip string, port string) error {
@@ -34,14 +36,12 @@ func (ps *PeerStore) DeletePeer(ip string, port string) error {
 
 func (ps *PeerStore) AddPeerToSwarm(ip string, port string, fileHash string) error {
 	file := &schema.File{}
-	err := ps.DB.First(&file, "hash = ?", fileHash).Error
-	if err != nil {
+	if err := ps.DB.First(&file, "hash = ?", fileHash).Error; err != nil {
 		return err
 	}
 
 	peer := &schema.Peer{}
-	err = ps.DB.First(&peer, "ip_address = ? AND port = ?", ip, port).Error
-	if err != nil {
+	if err := ps.DB.First(&peer, "ip_address = ? AND port = ?", ip, port).Error; err != nil {
 		return err
 	}
 
@@ -53,8 +53,7 @@ func (ps *PeerStore) AddPeerToSwarm(ip string, port string, fileHash string) err
 }
 
 func (ps *PeerStore) DropAllPeers() error {
-	err := ps.DB.Exec("DELETE FROM swarms").Error
-	if err != nil {
+	if err := ps.DB.Exec("DELETE FROM swarms").Error; err != nil {
 		return err
 	}
 	return ps.DB.Exec("DELETE FROM peers").Error

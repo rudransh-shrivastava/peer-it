@@ -20,14 +20,15 @@ import (
 )
 
 func (d *Daemon) startIPCServer() {
-	socketUrl := "/tmp/pit-daemon-" + d.IPCSocketIndex + ".sock"
-	os.Remove(socketUrl)
+	socketURL := "/tmp/pit-daemon-" + d.IPCSocketIndex + ".sock"
+	_ = os.Remove(socketURL)
 
-	l, err := net.Listen("unix", socketUrl)
+	l, err := net.Listen("unix", socketURL)
 	if err != nil {
-		panic(err)
+		d.Logger.Fatalf("Failed to start IPC server: %v", err)
+		return
 	}
-	d.Logger.Info("IPC Server started successfuly")
+	d.Logger.Info("IPC Server started successfully")
 	for {
 		cliConn, err := l.Accept()
 		d.Logger.Info("Accepted a new socket connection")
@@ -174,8 +175,7 @@ func (d *Daemon) handleCLIMsgs(cliRouter *prouter.MessageRouter) {
 				}
 				defer file.Close()
 				// Seek to the desired file size and write a single zero byte
-				_, err = file.Seek(int64(sizeInBytes-1), 0) // Move to size-1 position
-				if err != nil {
+				if _, err = file.Seek(sizeInBytes-1, 0); err != nil { // Move to size-1 position
 					d.Logger.Warnf("Error seeking file: %v", err)
 					return
 				}
@@ -351,7 +351,10 @@ func (d *Daemon) handleCLIMsgs(cliRouter *prouter.MessageRouter) {
 			}
 			buffer := make([]byte, maxChunkSize)
 			chunkIndex := 0
-			file.Seek(0, 0)
+			if _, err := file.Seek(0, 0); err != nil {
+				d.Logger.Warnf("Error seeking to start of file: %v", err)
+				return
+			}
 			for {
 				chunkSize, err := file.Read(buffer)
 				if err != nil && err != io.EOF {
@@ -393,7 +396,10 @@ func (d *Daemon) handleCLIMsgs(cliRouter *prouter.MessageRouter) {
 			}
 			defer createdFile.Close()
 
-			file.Seek(0, 0)
+			if _, err := file.Seek(0, 0); err != nil {
+				d.Logger.Warnf("Error seeking to start of file: %v", err)
+				return
+			}
 			_, err = io.Copy(createdFile, file)
 			if err != nil {
 				d.Logger.Warnf("Error copying file: %v", err)
@@ -424,7 +430,10 @@ func (d *Daemon) handleCLIMsgs(cliRouter *prouter.MessageRouter) {
 				},
 			}
 
-			d.TrackerRouter.WriteMessage(netMsg)
+			if err := d.TrackerRouter.WriteMessage(netMsg); err != nil {
+				d.Logger.Warnf("Error sending announce message: %v", err)
+				return
+			}
 			d.Logger.Info("Successfully registered a new file with tracker")
 		}
 	}

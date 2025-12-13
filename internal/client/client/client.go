@@ -99,28 +99,25 @@ func (c *Client) SendDownloadSignal(filePath string) error {
 }
 
 func (c *Client) ListenForDaemonLogs(done chan struct{}) {
-	for {
-		select {
-		case logMsg := <-c.LogChan:
-			msg := logMsg.Log.GetMessage()
-			if msg == "done" {
-				close(done)
-				return
-			}
-			if msg == "progress" {
-				c.ProgressBarChan <- 1 // 1 is any number, just to notify progress
-				continue
-			}
-			if msg[0] == '+' {
-				totalChunksStr := msg[1:]
-				totalChunks, err := strconv.Atoi(totalChunksStr)
-				if err != nil {
-					c.Logger.Warnf("Error converting string to int: %v", err)
-				}
-				c.TotalChunksChan <- totalChunks
-				continue
-			}
-			c.Logger.Info(msg)
+	for logMsg := range c.LogChan {
+		msg := logMsg.Log.GetMessage()
+		if msg == "done" {
+			close(done)
+			return
 		}
+		if msg == "progress" {
+			c.ProgressBarChan <- 1 // 1 is any number, just to notify progress
+			continue
+		}
+		if msg[0] == '+' {
+			totalChunksStr := msg[1:]
+			totalChunks, err := strconv.Atoi(totalChunksStr)
+			if err != nil {
+				c.Logger.Warnf("Error converting string to int: %v", err)
+			}
+			c.TotalChunksChan <- totalChunks
+			continue
+		}
+		c.Logger.Info(msg)
 	}
 }

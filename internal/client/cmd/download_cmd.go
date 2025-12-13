@@ -17,9 +17,9 @@ type ProgressWriter struct {
 }
 
 func (w *ProgressWriter) Write(p []byte) (n int, err error) {
-	w.bar.Clear()
+	_ = w.bar.Clear()
 	n, err = os.Stdout.Write(p)
-	w.bar.RenderBlank()
+	_ = w.bar.RenderBlank()
 	return
 }
 
@@ -73,7 +73,7 @@ var downloadCmd = &cobra.Command{
 			totalChunks := <-client.TotalChunksChan
 			bar.ChangeMax64(int64(totalChunks))
 			for range client.ProgressBarChan {
-				bar.Add(1)
+				_ = bar.Add(1)
 			}
 		}()
 

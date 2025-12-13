@@ -13,13 +13,19 @@ func NewDB() (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	sqlDB, err := database.DB()
-	sqlDB.Exec("PRAGMA foreign_keys = ON")
-
-	err = database.AutoMigrate(&schema.File{}, &schema.Peer{}, &schema.Swarm{})
-
 	if err != nil {
 		return nil, err
 	}
+
+	if _, err := sqlDB.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		return nil, err
+	}
+
+	if err := database.AutoMigrate(&schema.File{}, &schema.Peer{}, &schema.Swarm{}); err != nil {
+		return nil, err
+	}
+
 	return database, nil
 }

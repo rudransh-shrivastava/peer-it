@@ -103,6 +103,10 @@ func (d *Daemon) handleChunkRequest(peerID string, msg *protocol.ChunkRequest) {
 	chunkSize := chunk.ChunkSize
 	// Read chunk data from index to size from the file directly
 	chunkData, err := d.readChunkFromFile(msg.FileHash, chunkIndex, chunkSize, maxChunkSize)
+	if err != nil {
+		d.Logger.Warnf("Failed to read chunk from file: %v", err)
+		return
+	}
 
 	// Send the chunk
 	chunkMsg := &protocol.NetworkMessage{
@@ -177,7 +181,9 @@ func (d *Daemon) handleChunkResponse(peerId string, msg *protocol.ChunkResponse)
 	d.mu.Unlock()
 
 	// mark the chunk as available in the chunk store
-	err = d.ChunkStore.MarkChunkAvailable(msg.FileHash, int(msg.ChunkIndex))
+	if err := d.ChunkStore.MarkChunkAvailable(msg.FileHash, int(msg.ChunkIndex)); err != nil {
+		d.Logger.Warnf("Failed to mark chunk as available: %v", err)
+	}
 }
 
 func (d *Daemon) handleIntroduction(peerId string, msg *protocol.IntroductionMessage) {
@@ -233,7 +239,9 @@ func (d *Daemon) messageCLI(msg string) {
 			},
 		},
 	}
-	cliRouter.WriteMessage(netMsg)
+	if err := cliRouter.WriteMessage(netMsg); err != nil {
+		d.Logger.Warnf("Failed to send message to CLI: %v", err)
+	}
 }
 
 func (d *Daemon) sendHeartBeatsToTracker() {
