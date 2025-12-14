@@ -26,6 +26,8 @@ linters-settings:
     rules:
       - name: exported
         disabled: true
+      - name: package-comments
+        disabled: true
 
 issues:
   exclude-dirs:

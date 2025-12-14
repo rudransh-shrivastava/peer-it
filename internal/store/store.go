@@ -1,4 +1,3 @@
-// Package store provides database access for files, chunks, and peers.
 package store
 
 import (

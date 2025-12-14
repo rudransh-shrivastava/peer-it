@@ -1,4 +1,3 @@
-// Package tracker implements the tracker server and client for peer discovery.
 package tracker
 
 import (

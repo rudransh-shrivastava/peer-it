@@ -1,4 +1,3 @@
-// Package transport defines interfaces for peer-to-peer connections.
 package transport
 
 import (
