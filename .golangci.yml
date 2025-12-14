@@ -1,41 +1,36 @@
 linters:
   enable:
     - errcheck
+    - gocritic
     - govet
     - ineffassign
-    - staticcheck
-    - unused
-    - gocritic
     - misspell
     - revive
+    - staticcheck
     - unconvert
     - unparam
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    check-blank: false
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment
-      - shadow
-  misspell:
-    locale: US
-  revive:
-    rules:
-      - name: exported
-        disabled: true
-      - name: package-comments
-        disabled: true
-
-issues:
-  exclude-dirs:
-    - bin
-  exclude-files:
-    - ".*\\.pb\\.go$"
-  max-issues-per-linter: 0
-  max-same-issues: 0
+    - unused
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+  exclusions:
+    paths:
+      - bin
+    generated: lax
 
 run:
   timeout: 5m

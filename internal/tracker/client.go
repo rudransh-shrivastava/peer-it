@@ -4,7 +4,6 @@ import (
 	"context"
 )
 
-// Client communicates with a tracker server.
 type Client interface {
 	Connect(ctx context.Context) error
 	Announce(ctx context.Context, files []FileInfo) error
@@ -15,7 +14,6 @@ type Client interface {
 	Close() error
 }
 
-// FileInfo describes a file for tracker announcement.
 type FileInfo struct {
 	Hash        string
 	Name        string
@@ -24,12 +22,10 @@ type FileInfo struct {
 	TotalChunks int
 }
 
-// PeerInfo identifies a peer.
 type PeerInfo struct {
 	ID string
 }
 
-// SignalMessage is relayed signaling data from another peer.
 type SignalMessage struct {
 	SourcePeerID string
 	Payload      []byte

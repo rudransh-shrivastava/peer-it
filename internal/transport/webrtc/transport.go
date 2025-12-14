@@ -1,4 +1,3 @@
-// Package webrtc implements WebRTC transport.
 package webrtc
 
 import (
@@ -18,7 +17,6 @@ type webrtcTransport struct {
 	mu          sync.RWMutex
 }
 
-// New creates a WebRTC transport.
 func New(signaler transport.Signaler, stunServers []string) transport.Transport {
 	iceServers := make([]webrtc.ICEServer, 0, len(stunServers))
 	for _, server := range stunServers {
