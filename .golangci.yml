@@ -5,7 +5,6 @@ linters:
     - ineffassign
     - staticcheck
     - unused
-    - gosimple
     - gocritic
     - misspell
     - revive
@@ -38,3 +37,5 @@ issues:
 
 run:
   timeout: 5m
+
+version: "2"
