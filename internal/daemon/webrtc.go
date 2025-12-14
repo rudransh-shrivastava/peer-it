@@ -144,7 +144,6 @@ func (d *Daemon) webrtcMessageHandler(msg webrtc.DataChannelMessage, peerId stri
 		d.Logger.Infof("Received chunk response for file: %s", m.ChunkResponse.FileHash)
 		d.handleChunkResponse(peerId, m.ChunkResponse)
 
-	// TODO: case for a GOT message to tell others we got a chunk
 	default:
 		d.Logger.Warnf("Unknown message type received")
 	}
