@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 
-	"github.com/rudransh-shrivastava/peer-it/internal/daemon"
+	"github.com/rudransh-shrivastava/peer-it/internal/node"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils/logger"
 	"github.com/spf13/cobra"
 )
@@ -16,18 +16,22 @@ var daemonCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		ipcSocketIndex := args[0]
 		trackerAddr := args[1]
-		logger := logger.NewLogger()
-		logger.Debugf("IPC Socket Index: %s", ipcSocketIndex)
-		logger.Debugf("Tracker Address: %s", trackerAddr)
+		log := logger.NewLogger()
+		log.Debugf("IPC Socket Index: %s", ipcSocketIndex)
+		log.Debugf("Tracker Address: %s", trackerAddr)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		daemon, err := daemon.NewDaemon(ctx, trackerAddr, ipcSocketIndex)
+		n, err := node.New(ctx, node.Options{
+			TrackerAddr:    trackerAddr,
+			IPCSocketIndex: ipcSocketIndex,
+			Logger:         log,
+		})
 		if err != nil {
-			logger.Fatal(err)
+			log.Fatal(err)
 			return
 		}
-		daemon.Start()
+		n.Start()
 	},
 }

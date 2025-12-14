@@ -1,48 +1,38 @@
-package daemon
+package node
 
 import (
+	"time"
+
 	"github.com/pion/webrtc/v3"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 )
 
-func (d *Daemon) handleTrackerMsgs() {
-	d.Logger.Info("Connected to tracker server")
+func (n *Node) handleTrackerMsgs() {
+	n.logger.Info("Connected to tracker server")
 	for {
 		select {
-		case <-d.Ctx.Done():
-			d.Logger.Info("Stopping the tracker message listener")
+		case <-n.ctx.Done():
+			n.logger.Info("Stopping the tracker message listener")
 			return
-		case signalingMsg := <-d.TrackerSignalingCh:
+		case signalingMsg := <-n.trackerSignalingCh:
 
 			peerID := signalingMsg.Signaling.GetSourcePeerId()
-			pc, exists := d.PeerConnections[peerID]
+			pc, exists := n.peerConnections[peerID]
 
 			if !exists {
 				// If we don't have a connection yet and this is an offer, create one
 				if offer := signalingMsg.Signaling.GetOffer(); offer != nil {
-					config := webrtc.Configuration{
-						ICEServers: []webrtc.ICEServer{
-							{
-								URLs: []string{
-									"stun:stun.l.google.com:19302",
-									"stun:stun1.l.google.com:19302",
-									"stun:stun2.l.google.com:19302",
-									"stun:stun3.l.google.com:19302",
-									"stun:stun4.l.google.com:19302",
-								},
-							},
-						},
-					}
+					config := DefaultSTUNConfig()
 
-					err := d.handleWebRTCConnection(peerID, "", config, false)
+					err := n.handleWebRTCConnection(peerID, "", config, false)
 
 					if err != nil {
-						d.Logger.Warnf("Failed to create peer connection: %v", err)
+						n.logger.Warnf("Failed to create peer connection: %v", err)
 						continue
 					}
-					pc = d.PeerConnections[peerID]
+					pc = n.peerConnections[peerID]
 				} else {
-					d.Logger.Warn("Received signaling message for unknown peer")
+					n.logger.Warn("Received signaling message for unknown peer")
 					continue
 				}
 			}
@@ -56,19 +46,19 @@ func (d *Daemon) handleTrackerMsgs() {
 					SDP:  offer.GetSdp(),
 				})
 				if err != nil {
-					d.Logger.Warnf("Failed to set remote description: %v", err)
+					n.logger.Warnf("Failed to set remote description: %v", err)
 					continue
 				}
 
 				answer, err := pc.CreateAnswer(nil)
 				if err != nil {
-					d.Logger.Warnf("Failed to create answer: %v", err)
+					n.logger.Warnf("Failed to create answer: %v", err)
 					continue
 				}
 
 				err = pc.SetLocalDescription(answer)
 				if err != nil {
-					d.Logger.Warnf("Failed to set local description: %v", err)
+					n.logger.Warnf("Failed to set local description: %v", err)
 					continue
 				}
 
@@ -85,9 +75,9 @@ func (d *Daemon) handleTrackerMsgs() {
 					},
 				}
 
-				err = d.TrackerRouter.WriteMessage(answerMsg)
+				err = n.trackerRouter.WriteMessage(answerMsg)
 				if err != nil {
-					d.Logger.Warnf("Failed to send answer: %v", err)
+					n.logger.Warnf("Failed to send answer: %v", err)
 				}
 
 			case signalingMsg.Signaling.GetAnswer() != nil:
@@ -98,7 +88,7 @@ func (d *Daemon) handleTrackerMsgs() {
 					SDP:  answer.GetSdp(),
 				})
 				if err != nil {
-					d.Logger.Warnf("Failed to set remote description: %v", err)
+					n.logger.Warnf("Failed to set remote description: %v", err)
 				}
 
 			case signalingMsg.Signaling.GetIceCandidate() != nil:
@@ -111,15 +101,15 @@ func (d *Daemon) handleTrackerMsgs() {
 					SDPMLineIndex: &sdpmlineIndex,
 				})
 				if err != nil {
-					d.Logger.Warnf("Failed to add ICE candidate: %v", err)
+					n.logger.Warnf("Failed to add ICE candidate: %v", err)
 				}
 			}
 
-		case peerlistResponse := <-d.TrackerPeerListResponseCh:
-			d.Logger.Debugf("Received peer list response from tracker: %+v", peerlistResponse.PeerListResponse)
-			channel, exists := d.PendingPeerListRequests[peerlistResponse.PeerListResponse.GetFileHash()]
+		case peerlistResponse := <-n.trackerPeerListResponseCh:
+			n.logger.Debugf("Received peer list response from tracker: %+v", peerlistResponse.PeerListResponse)
+			channel, exists := n.pendingPeerListRequests[peerlistResponse.PeerListResponse.GetFileHash()]
 			if !exists {
-				d.Logger.Warnf("No Requests for file hash: %s", peerlistResponse.PeerListResponse.GetFileHash())
+				n.logger.Warnf("No Requests for file hash: %s", peerlistResponse.PeerListResponse.GetFileHash())
 			}
 
 			responseMsg := &protocol.NetworkMessage_PeerListResponse{
@@ -127,10 +117,27 @@ func (d *Daemon) handleTrackerMsgs() {
 			}
 
 			channel <- responseMsg
-			d.Logger.Info("Sent peer list response to CLI")
-		case idMsg := <-d.TrackerIdMessageCh:
-			d.ID = idMsg.Id.GetId()
-			d.Logger.Infof("Got my ID from tracker server: %s", d.ID)
+			n.logger.Info("Sent peer list response to CLI")
+		case idMsg := <-n.trackerIDMessageCh:
+			n.id = idMsg.Id.GetId()
+			n.logger.Infof("Got my ID from tracker server: %s", n.id)
+		}
+	}
+}
+
+func (n *Node) sendHeartBeatsToTracker() {
+	ticker := time.NewTicker(heartbeatInterval * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-n.ctx.Done():
+			n.logger.Info("Stopping the heart")
+			return
+		case <-ticker.C:
+			err := n.trackerRouter.WriteMessage(BuildHeartbeatMessage(time.Now().Unix()))
+			if err != nil {
+				n.logger.Warnf("Error sending message to Tracker: %v", err)
+			}
 		}
 	}
 }

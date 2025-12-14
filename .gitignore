@@ -1,12 +1,5 @@
-# Binaries
 bin
-
-# SQLite database files
 client-*.sqlite3
-tracker.sqlite3
-
-# Downloaded files
+coverage.out
 downloads
-
-# TODOS
-_
+tracker.sqlite3
