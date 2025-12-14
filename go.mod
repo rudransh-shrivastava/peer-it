@@ -3,7 +3,7 @@ module github.com/rudransh-shrivastava/peer-it
 go 1.23.5
 
 require (
-	github.com/pion/webrtc/v3 v3.3.5
+	github.com/pion/webrtc/v3 v3.3.6
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/spf13/cobra v1.10.2
 	google.golang.org/protobuf v1.36.11
@@ -15,7 +15,7 @@ require (
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/pion/datachannel v1.5.8 // indirect
 	github.com/pion/dtls/v2 v2.2.12 // indirect
-	github.com/pion/ice/v2 v2.3.36 // indirect
+	github.com/pion/ice/v2 v2.3.38 // indirect
 	github.com/pion/interceptor v0.1.29 // indirect
 	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/mdns v0.0.12 // indirect
