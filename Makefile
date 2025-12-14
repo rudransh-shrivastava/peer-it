@@ -16,6 +16,10 @@ build-tracker: protoc
 check:
 	@pre-commit run -a
 
+check-test: \
+	check \
+	test
+
 clean:
 	@rm -rf bin
 
@@ -34,6 +38,9 @@ run-tracker: build-tracker
 
 sqlc:
 	@sqlc generate
+
+test:
+	@go test ./...
 
 $(PROTO_OUT): $(PROTO_FILE)
 	@protoc --go_out=. --go_opt=paths=source_relative $<

@@ -1,3 +1,4 @@
+// Package store provides database access for files, chunks, and peers.
 package store
 
 import (
@@ -138,3 +139,9 @@ func (ps *PeerStore) DropAllPeers(ctx context.Context) error {
 func (ps *PeerStore) GetPeersByFileHash(ctx context.Context, fileHash string) ([]db.Peer, error) {
 	return ps.queries.GetPeersByFileHash(ctx, fileHash)
 }
+
+var (
+	_ FileRepository  = (*FileStore)(nil)
+	_ ChunkRepository = (*ChunkStore)(nil)
+	_ PeerRepository  = (*PeerStore)(nil)
+)
