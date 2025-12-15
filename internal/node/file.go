@@ -34,6 +34,6 @@ func BuildDownloadPath(ipcIndex, fileName string) string {
 	return fmt.Sprintf("downloads/daemon-%s/%s", ipcIndex, fileName)
 }
 
-func BuildSocketPath(ipcIndex string) string {
-	return fmt.Sprintf("/tmp/pit-daemon-%s.sock", ipcIndex)
+func BuildTCPAddress(index string) string {
+	return fmt.Sprintf("127.0.0.1:707%s", index)
 }

@@ -21,8 +21,8 @@ type Client struct {
 }
 
 func NewClient(index string, logger *logrus.Logger) (*Client, error) {
-	socketURL := "/tmp/pit-daemon-" + index + ".sock"
-	conn, err := net.Dial("unix", socketURL)
+	addr := "127.0.0.1:707" + index
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		logger.Fatal(err)
 		return &Client{}, err

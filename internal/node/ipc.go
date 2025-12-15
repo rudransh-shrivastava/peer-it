@@ -3,7 +3,6 @@ package node
 import (
 	"context"
 	"net"
-	"os"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/shared/prouter"
@@ -11,15 +10,14 @@ import (
 )
 
 func (n *Node) startIPCServer() {
-	socketURL := BuildSocketPath(n.ipcSocketIndex)
-	_ = os.Remove(socketURL)
+	addr := BuildTCPAddress(n.ipcSocketIndex)
 
-	l, err := net.Listen("unix", socketURL)
+	l, err := net.Listen("tcp", addr)
 	if err != nil {
-		n.logger.Fatalf("Failed to start IPC server: %v", err)
+		n.logger.Fatalf("Failed to start TCP server: %v", err)
 		return
 	}
-	n.logger.Info("IPC Server started successfully")
+	n.logger.Infof("TCP Server started on %s", addr)
 
 	for {
 		cliConn, err := l.Accept()

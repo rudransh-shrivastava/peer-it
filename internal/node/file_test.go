@@ -84,9 +84,9 @@ func TestBuildDownloadPath(t *testing.T) {
 	}
 }
 
-func TestBuildSocketPath(t *testing.T) {
-	result := BuildSocketPath("1")
-	expected := "/tmp/pit-daemon-1.sock"
+func TestBuildTCPAddress(t *testing.T) {
+	result := BuildTCPAddress("1")
+	expected := "127.0.0.1:7071"
 	if result != expected {
 		t.Errorf("expected %q, got %q", expected, result)
 	}
