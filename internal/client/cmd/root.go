@@ -3,7 +3,7 @@ package cmd
 import (
 	"os"
 
-	"github.com/rudransh-shrivastava/peer-it/internal/shared/utils/logger"
+	"github.com/rudransh-shrivastava/peer-it/internal/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -25,8 +25,5 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.AddCommand(registerCmd)
-	rootCmd.AddCommand(downloadCmd)
-	rootCmd.AddCommand(daemonCmd)
-	rootCmd.AddCommand(parseCmd)
+	// rootCmd.AddCommand(daemonCmd)
 }
