@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/pion/webrtc/v3 v3.3.6
-	github.com/schollz/progressbar/v3 v3.18.0
+	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/spf13/cobra v1.10.2
 	google.golang.org/protobuf v1.36.11
 )
