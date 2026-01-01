@@ -1,3 +1,5 @@
+![CI](https://github.com/rudransh-shrivastava/peer-it/actions/workflows/ci.yml/badge.svg)
+
 # Peer It - Peer to Peer  File Sharing Network
 
 Peer it is a decentralised peer to peer file sharing network.
