@@ -47,7 +47,7 @@ jobs:
           git diff --exit-code || (echo 'Unstaged changes detected. Run `make check` and use `git add` to address it.' && exit 1)
 
   build:
-    name: Build
+    name: Build & Test
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -62,4 +62,4 @@ jobs:
         run: go build ./...
 
       - name: Test
-        run: go test./...
+        run: go test ./... --cover
