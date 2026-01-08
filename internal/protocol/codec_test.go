@@ -5,33 +5,65 @@ import (
 	"testing"
 )
 
-func TestCodecPingPong(t *testing.T) {
+func TestCodecChunkReqRes(t *testing.T) {
 	codec := NewCodec()
 	var buf bytes.Buffer
 
-	// Test Ping
-	if err := codec.Encode(&buf, &Ping{}); err != nil {
-		t.Fatalf("Encode Ping failed: %v", err)
+	fileHash := testHash("myfile")
+
+	req := &ChunkReq{FileHash: fileHash, ChunkIndex: 42}
+	if err := codec.Encode(&buf, req); err != nil {
+		t.Fatalf("Encode ChunkReq failed: %v", err)
 	}
 
 	decoded, err := codec.Decode(&buf)
 	if err != nil {
-		t.Fatalf("Decode Ping failed: %v", err)
+		t.Fatalf("Decode ChunkReq failed: %v", err)
 	}
 
-	if _, ok := decoded.(*Ping); !ok {
-		t.Errorf("Expected *Ping, got %T", decoded)
+	decodedReq, ok := decoded.(*ChunkReq)
+	if !ok {
+		t.Fatalf("Expected *ChunkReq, got %T", decoded)
 	}
 
-	// Test Pong
+	if decodedReq.ChunkIndex != 42 {
+		t.Errorf("Expected chunk index 42, got %d", decodedReq.ChunkIndex)
+	}
+
 	buf.Reset()
-	if err := codec.Encode(&buf, &Pong{}); err != nil {
-		t.Fatalf("Encode Pong failed: %v", err)
+	chunkData := []byte("This is some chunk data for testing purposes.")
+	res := &ChunkRes{FileHash: fileHash, ChunkIndex: 42, Data: chunkData}
+
+	if err := codec.Encode(&buf, res); err != nil {
+		t.Fatalf("Encode ChunkRes failed: %v", err)
 	}
 
 	decoded, err = codec.Decode(&buf)
 	if err != nil {
-		t.Fatalf("Decode Pong failed: %v", err)
+		t.Fatalf("Decode ChunkRes failed: %v", err)
+	}
+
+	decodedRes, ok := decoded.(*ChunkRes)
+	if !ok {
+		t.Fatalf("Expected *ChunkRes, got %T", decoded)
+	}
+
+	if !bytes.Equal(decodedRes.Data, chunkData) {
+		t.Errorf("Chunk data mismatch")
+	}
+}
+
+func TestCodecDecodeFromBytes(t *testing.T) {
+	codec := NewCodec()
+
+	data, err := codec.EncodeToBytes(&Pong{})
+	if err != nil {
+		t.Fatalf("EncodeToBytes failed: %v", err)
+	}
+
+	decoded, err := codec.DecodeFromBytes(data)
+	if err != nil {
+		t.Fatalf("DecodeFromBytes failed: %v", err)
 	}
 
 	if _, ok := decoded.(*Pong); !ok {
@@ -39,11 +71,109 @@ func TestCodecPingPong(t *testing.T) {
 	}
 }
 
+func TestCodecDiscovery(t *testing.T) {
+	codec := NewCodec()
+	var buf bytes.Buffer
+
+	msg := &Discovery{
+		NodeID:    testNodeID("discoverable-node"),
+		Port:      59000,
+		FileCount: 5,
+	}
+
+	if err := codec.Encode(&buf, msg); err != nil {
+		t.Fatalf("Encode Discovery failed: %v", err)
+	}
+
+	decoded, err := codec.Decode(&buf)
+	if err != nil {
+		t.Fatalf("Decode Discovery failed: %v", err)
+	}
+
+	decodedMsg, ok := decoded.(*Discovery)
+	if !ok {
+		t.Fatalf("Expected *Discovery, got %T", decoded)
+	}
+
+	if decodedMsg.FileCount != 5 {
+		t.Errorf("Expected file count 5, got %d", decodedMsg.FileCount)
+	}
+}
+
+func TestCodecEmptyFileList(t *testing.T) {
+	codec := NewCodec()
+	var buf bytes.Buffer
+
+	res := &FileListRes{Files: []FileEntry{}}
+
+	if err := codec.Encode(&buf, res); err != nil {
+		t.Fatalf("Encode empty FileListRes failed: %v", err)
+	}
+
+	decoded, err := codec.Decode(&buf)
+	if err != nil {
+		t.Fatalf("Decode empty FileListRes failed: %v", err)
+	}
+
+	decodedRes, ok := decoded.(*FileListRes)
+	if !ok {
+		t.Fatalf("Expected *FileListRes, got %T", decoded)
+	}
+
+	if len(decodedRes.Files) != 0 {
+		t.Errorf("Expected 0 files, got %d", len(decodedRes.Files))
+	}
+}
+
+func TestCodecEncodeToBytes(t *testing.T) {
+	codec := NewCodec()
+
+	data, err := codec.EncodeToBytes(&Ping{})
+	if err != nil {
+		t.Fatalf("EncodeToBytes failed: %v", err)
+	}
+
+	if len(data) == 0 {
+		t.Error("Expected non-empty data")
+	}
+}
+
+func TestCodecError(t *testing.T) {
+	codec := NewCodec()
+	var buf bytes.Buffer
+
+	msg := &Error{
+		Code:    ErrFileNotFound,
+		Message: "The requested file does not exist",
+	}
+
+	if err := codec.Encode(&buf, msg); err != nil {
+		t.Fatalf("Encode Error failed: %v", err)
+	}
+
+	decoded, err := codec.Decode(&buf)
+	if err != nil {
+		t.Fatalf("Decode Error failed: %v", err)
+	}
+
+	decodedMsg, ok := decoded.(*Error)
+	if !ok {
+		t.Fatalf("Expected *Error, got %T", decoded)
+	}
+
+	if decodedMsg.Code != ErrFileNotFound {
+		t.Errorf("Expected ErrFileNotFound, got %v", decodedMsg.Code)
+	}
+
+	if decodedMsg.Message != "The requested file does not exist" {
+		t.Errorf("Message mismatch: %s", decodedMsg.Message)
+	}
+}
+
 func TestCodecFileListReqRes(t *testing.T) {
 	codec := NewCodec()
 	var buf bytes.Buffer
 
-	// Test FileListReq
 	if err := codec.Encode(&buf, &FileListReq{}); err != nil {
 		t.Fatalf("Encode FileListReq failed: %v", err)
 	}
@@ -57,7 +187,6 @@ func TestCodecFileListReqRes(t *testing.T) {
 		t.Errorf("Expected *FileListReq, got %T", decoded)
 	}
 
-	// Test FileListRes with multiple files
 	buf.Reset()
 	res := &FileListRes{
 		Files: []FileEntry{
@@ -99,7 +228,6 @@ func TestCodecFileMetaReqRes(t *testing.T) {
 
 	hash := testHash("testfile")
 
-	// Test FileMetaReq
 	req := &FileMetaReq{Hash: hash}
 	if err := codec.Encode(&buf, req); err != nil {
 		t.Fatalf("Encode FileMetaReq failed: %v", err)
@@ -119,7 +247,6 @@ func TestCodecFileMetaReqRes(t *testing.T) {
 		t.Errorf("Hash mismatch")
 	}
 
-	// Test FileMetaRes
 	buf.Reset()
 	res := &FileMetaRes{
 		Hash:         hash,
@@ -156,53 +283,59 @@ func TestCodecFileMetaReqRes(t *testing.T) {
 	}
 }
 
-func TestCodecChunkReqRes(t *testing.T) {
+func TestCodecHolePunchProbe(t *testing.T) {
 	codec := NewCodec()
 	var buf bytes.Buffer
 
-	fileHash := testHash("myfile")
+	msg := &HolePunchProbe{
+		SenderNodeID: testNodeID("sender-peer"),
+	}
 
-	// Test ChunkReq
-	req := &ChunkReq{FileHash: fileHash, ChunkIndex: 42}
-	if err := codec.Encode(&buf, req); err != nil {
-		t.Fatalf("Encode ChunkReq failed: %v", err)
+	if err := codec.Encode(&buf, msg); err != nil {
+		t.Fatalf("Encode HolePunchProbe failed: %v", err)
 	}
 
 	decoded, err := codec.Decode(&buf)
 	if err != nil {
-		t.Fatalf("Decode ChunkReq failed: %v", err)
+		t.Fatalf("Decode HolePunchProbe failed: %v", err)
 	}
 
-	decodedReq, ok := decoded.(*ChunkReq)
+	decodedMsg, ok := decoded.(*HolePunchProbe)
 	if !ok {
-		t.Fatalf("Expected *ChunkReq, got %T", decoded)
+		t.Fatalf("Expected *HolePunchProbe, got %T", decoded)
 	}
 
-	if decodedReq.ChunkIndex != 42 {
-		t.Errorf("Expected chunk index 42, got %d", decodedReq.ChunkIndex)
+	if decodedMsg.SenderNodeID != testNodeID("sender-peer") {
+		t.Errorf("SenderNodeID mismatch")
+	}
+}
+
+func TestCodecHolePunchReq(t *testing.T) {
+	codec := NewCodec()
+	var buf bytes.Buffer
+
+	msg := &HolePunchReq{
+		TargetNodeID: testNodeID("target-peer"),
+		TargetIP:     testIPv4(203, 0, 113, 50),
+		TargetPort:   59001,
 	}
 
-	// Test ChunkRes
-	buf.Reset()
-	chunkData := []byte("This is some chunk data for testing purposes.")
-	res := &ChunkRes{FileHash: fileHash, ChunkIndex: 42, Data: chunkData}
-
-	if err := codec.Encode(&buf, res); err != nil {
-		t.Fatalf("Encode ChunkRes failed: %v", err)
+	if err := codec.Encode(&buf, msg); err != nil {
+		t.Fatalf("Encode HolePunchReq failed: %v", err)
 	}
 
-	decoded, err = codec.Decode(&buf)
+	decoded, err := codec.Decode(&buf)
 	if err != nil {
-		t.Fatalf("Decode ChunkRes failed: %v", err)
+		t.Fatalf("Decode HolePunchReq failed: %v", err)
 	}
 
-	decodedRes, ok := decoded.(*ChunkRes)
+	decodedMsg, ok := decoded.(*HolePunchReq)
 	if !ok {
-		t.Fatalf("Expected *ChunkRes, got %T", decoded)
+		t.Fatalf("Expected *HolePunchReq, got %T", decoded)
 	}
 
-	if !bytes.Equal(decodedRes.Data, chunkData) {
-		t.Errorf("Chunk data mismatch")
+	if decodedMsg.TargetPort != 59001 {
+		t.Errorf("Expected port 59001, got %d", decodedMsg.TargetPort)
 	}
 }
 
@@ -245,7 +378,6 @@ func TestCodecPeerListReqRes(t *testing.T) {
 
 	fileHash := testHash("shared-file")
 
-	// Test PeerListReq
 	if err := codec.Encode(&buf, &PeerListReq{FileHash: fileHash}); err != nil {
 		t.Fatalf("Encode PeerListReq failed: %v", err)
 	}
@@ -259,7 +391,6 @@ func TestCodecPeerListReqRes(t *testing.T) {
 		t.Fatalf("Expected *PeerListReq, got %T", decoded)
 	}
 
-	// Test PeerListRes
 	buf.Reset()
 	res := &PeerListRes{
 		FileHash: fileHash,
@@ -288,195 +419,35 @@ func TestCodecPeerListReqRes(t *testing.T) {
 	}
 }
 
-func TestCodecHolePunchReq(t *testing.T) {
+func TestCodecPingPong(t *testing.T) {
 	codec := NewCodec()
 	var buf bytes.Buffer
 
-	msg := &HolePunchReq{
-		TargetNodeID: testNodeID("target-peer"),
-		TargetIP:     testIPv4(203, 0, 113, 50),
-		TargetPort:   59001,
-	}
-
-	if err := codec.Encode(&buf, msg); err != nil {
-		t.Fatalf("Encode HolePunchReq failed: %v", err)
+	if err := codec.Encode(&buf, &Ping{}); err != nil {
+		t.Fatalf("Encode Ping failed: %v", err)
 	}
 
 	decoded, err := codec.Decode(&buf)
 	if err != nil {
-		t.Fatalf("Decode HolePunchReq failed: %v", err)
+		t.Fatalf("Decode Ping failed: %v", err)
 	}
 
-	decodedMsg, ok := decoded.(*HolePunchReq)
-	if !ok {
-		t.Fatalf("Expected *HolePunchReq, got %T", decoded)
+	if _, ok := decoded.(*Ping); !ok {
+		t.Errorf("Expected *Ping, got %T", decoded)
 	}
 
-	if decodedMsg.TargetPort != 59001 {
-		t.Errorf("Expected port 59001, got %d", decodedMsg.TargetPort)
-	}
-}
-
-func TestCodecHolePunchProbe(t *testing.T) {
-	codec := NewCodec()
-	var buf bytes.Buffer
-
-	msg := &HolePunchProbe{
-		SenderNodeID: testNodeID("sender-peer"),
+	buf.Reset()
+	if err := codec.Encode(&buf, &Pong{}); err != nil {
+		t.Fatalf("Encode Pong failed: %v", err)
 	}
 
-	if err := codec.Encode(&buf, msg); err != nil {
-		t.Fatalf("Encode HolePunchProbe failed: %v", err)
-	}
-
-	decoded, err := codec.Decode(&buf)
+	decoded, err = codec.Decode(&buf)
 	if err != nil {
-		t.Fatalf("Decode HolePunchProbe failed: %v", err)
-	}
-
-	decodedMsg, ok := decoded.(*HolePunchProbe)
-	if !ok {
-		t.Fatalf("Expected *HolePunchProbe, got %T", decoded)
-	}
-
-	if decodedMsg.SenderNodeID != testNodeID("sender-peer") {
-		t.Errorf("SenderNodeID mismatch")
-	}
-}
-
-func TestCodecDiscovery(t *testing.T) {
-	codec := NewCodec()
-	var buf bytes.Buffer
-
-	msg := &Discovery{
-		NodeID:    testNodeID("discoverable-node"),
-		Port:      59000,
-		FileCount: 5,
-	}
-
-	if err := codec.Encode(&buf, msg); err != nil {
-		t.Fatalf("Encode Discovery failed: %v", err)
-	}
-
-	decoded, err := codec.Decode(&buf)
-	if err != nil {
-		t.Fatalf("Decode Discovery failed: %v", err)
-	}
-
-	decodedMsg, ok := decoded.(*Discovery)
-	if !ok {
-		t.Fatalf("Expected *Discovery, got %T", decoded)
-	}
-
-	if decodedMsg.FileCount != 5 {
-		t.Errorf("Expected file count 5, got %d", decodedMsg.FileCount)
-	}
-}
-
-func TestCodecError(t *testing.T) {
-	codec := NewCodec()
-	var buf bytes.Buffer
-
-	msg := &Error{
-		Code:    ErrFileNotFound,
-		Message: "The requested file does not exist",
-	}
-
-	if err := codec.Encode(&buf, msg); err != nil {
-		t.Fatalf("Encode Error failed: %v", err)
-	}
-
-	decoded, err := codec.Decode(&buf)
-	if err != nil {
-		t.Fatalf("Decode Error failed: %v", err)
-	}
-
-	decodedMsg, ok := decoded.(*Error)
-	if !ok {
-		t.Fatalf("Expected *Error, got %T", decoded)
-	}
-
-	if decodedMsg.Code != ErrFileNotFound {
-		t.Errorf("Expected ErrFileNotFound, got %v", decodedMsg.Code)
-	}
-
-	if decodedMsg.Message != "The requested file does not exist" {
-		t.Errorf("Message mismatch: %s", decodedMsg.Message)
-	}
-}
-
-func TestCodecEmptyFileList(t *testing.T) {
-	codec := NewCodec()
-	var buf bytes.Buffer
-
-	res := &FileListRes{Files: []FileEntry{}}
-
-	if err := codec.Encode(&buf, res); err != nil {
-		t.Fatalf("Encode empty FileListRes failed: %v", err)
-	}
-
-	decoded, err := codec.Decode(&buf)
-	if err != nil {
-		t.Fatalf("Decode empty FileListRes failed: %v", err)
-	}
-
-	decodedRes, ok := decoded.(*FileListRes)
-	if !ok {
-		t.Fatalf("Expected *FileListRes, got %T", decoded)
-	}
-
-	if len(decodedRes.Files) != 0 {
-		t.Errorf("Expected 0 files, got %d", len(decodedRes.Files))
-	}
-}
-
-func TestCodecEncodeToBytes(t *testing.T) {
-	codec := NewCodec()
-
-	data, err := codec.EncodeToBytes(&Ping{})
-	if err != nil {
-		t.Fatalf("EncodeToBytes failed: %v", err)
-	}
-
-	if len(data) == 0 {
-		t.Error("Expected non-empty data")
-	}
-}
-
-func TestCodecDecodeFromBytes(t *testing.T) {
-	codec := NewCodec()
-
-	data, err := codec.EncodeToBytes(&Pong{})
-	if err != nil {
-		t.Fatalf("EncodeToBytes failed: %v", err)
-	}
-
-	decoded, err := codec.DecodeFromBytes(data)
-	if err != nil {
-		t.Fatalf("DecodeFromBytes failed: %v", err)
+		t.Fatalf("Decode Pong failed: %v", err)
 	}
 
 	if _, ok := decoded.(*Pong); !ok {
 		t.Errorf("Expected *Pong, got %T", decoded)
-	}
-}
-
-func TestMessageTypeString(t *testing.T) {
-	tests := []struct {
-		msgType  MessageType
-		expected string
-	}{
-		{MsgPing, "PING"},
-		{MsgPong, "PONG"},
-		{MsgFileListReq, "FILE_LIST_REQ"},
-		{MsgError, "ERROR"},
-		{MessageType(0xFFFF), "UNKNOWN"},
-	}
-
-	for _, tt := range tests {
-		if got := tt.msgType.String(); got != tt.expected {
-			t.Errorf("%v.String() = %s, want %s", tt.msgType, got, tt.expected)
-		}
 	}
 }
 
@@ -485,9 +456,9 @@ func TestErrorCodeString(t *testing.T) {
 		code     ErrorCode
 		expected string
 	}{
-		{ErrUnknown, "UNKNOWN"},
-		{ErrInvalidMsg, "INVALID_MESSAGE"},
+		{ErrChunkNotFound, "CHUNK_NOT_FOUND"},
 		{ErrFileNotFound, "FILE_NOT_FOUND"},
+		{ErrUnknown, "UNKNOWN"},
 		{ErrorCode(0xFFFE), "UNKNOWN"},
 	}
 
@@ -498,18 +469,30 @@ func TestErrorCodeString(t *testing.T) {
 	}
 }
 
-// --- Test helpers ---
+func TestMessageTypeString(t *testing.T) {
+	tests := []struct {
+		expected string
+		msgType  MessageType
+	}{
+		{"CHUNK_REQ", MsgChunkReq},
+		{"ERROR", MsgError},
+		{"FILE_LIST_REQ", MsgFileListReq},
+		{"PING", MsgPing},
+		{"PONG", MsgPong},
+		{"UNKNOWN", MessageType(0xFFFF)},
+	}
+
+	for _, tt := range tests {
+		if got := tt.msgType.String(); got != tt.expected {
+			t.Errorf("%v.String() = %s, want %s", tt.msgType, got, tt.expected)
+		}
+	}
+}
 
 func testHash(s string) [HashSize]byte {
 	var h [HashSize]byte
 	copy(h[:], []byte(s))
 	return h
-}
-
-func testNodeID(s string) [NodeIDSize]byte {
-	var id [NodeIDSize]byte
-	copy(id[:], []byte(s))
-	return id
 }
 
 func testIPv4(a, b, c, d byte) [16]byte {
@@ -521,4 +504,10 @@ func testIPv4(a, b, c, d byte) [16]byte {
 	ip[14] = c
 	ip[15] = d
 	return ip
+}
+
+func testNodeID(s string) [NodeIDSize]byte {
+	var id [NodeIDSize]byte
+	copy(id[:], []byte(s))
+	return id
 }
