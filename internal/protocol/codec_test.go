@@ -288,6 +288,62 @@ func TestCodecPeerListReqRes(t *testing.T) {
 	}
 }
 
+func TestCodecHolePunchReq(t *testing.T) {
+	codec := NewCodec()
+	var buf bytes.Buffer
+
+	msg := &HolePunchReq{
+		TargetNodeID: testNodeID("target-peer"),
+		TargetIP:     testIPv4(203, 0, 113, 50),
+		TargetPort:   59001,
+	}
+
+	if err := codec.Encode(&buf, msg); err != nil {
+		t.Fatalf("Encode HolePunchReq failed: %v", err)
+	}
+
+	decoded, err := codec.Decode(&buf)
+	if err != nil {
+		t.Fatalf("Decode HolePunchReq failed: %v", err)
+	}
+
+	decodedMsg, ok := decoded.(*HolePunchReq)
+	if !ok {
+		t.Fatalf("Expected *HolePunchReq, got %T", decoded)
+	}
+
+	if decodedMsg.TargetPort != 59001 {
+		t.Errorf("Expected port 59001, got %d", decodedMsg.TargetPort)
+	}
+}
+
+func TestCodecHolePunchProbe(t *testing.T) {
+	codec := NewCodec()
+	var buf bytes.Buffer
+
+	msg := &HolePunchProbe{
+		SenderNodeID: testNodeID("sender-peer"),
+	}
+
+	if err := codec.Encode(&buf, msg); err != nil {
+		t.Fatalf("Encode HolePunchProbe failed: %v", err)
+	}
+
+	decoded, err := codec.Decode(&buf)
+	if err != nil {
+		t.Fatalf("Decode HolePunchProbe failed: %v", err)
+	}
+
+	decodedMsg, ok := decoded.(*HolePunchProbe)
+	if !ok {
+		t.Fatalf("Expected *HolePunchProbe, got %T", decoded)
+	}
+
+	if decodedMsg.SenderNodeID != testNodeID("sender-peer") {
+		t.Errorf("SenderNodeID mismatch")
+	}
+}
+
 func TestCodecDiscovery(t *testing.T) {
 	codec := NewCodec()
 	var buf bytes.Buffer
