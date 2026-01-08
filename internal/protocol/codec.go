@@ -18,6 +18,8 @@ func init() {
 	gob.Register(&PeerAnnounce{})
 	gob.Register(&PeerListReq{})
 	gob.Register(&PeerListRes{})
+	gob.Register(&HolePunchReq{})
+	gob.Register(&HolePunchProbe{})
 	gob.Register(&Discovery{})
 	gob.Register(&Error{})
 }
