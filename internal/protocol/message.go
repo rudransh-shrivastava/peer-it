@@ -92,7 +92,20 @@ type PeerListRes struct {
 
 func (PeerListRes) Type() MessageType { return MsgPeerListRes }
 
-// Discovery is broadcast for LAN peer discovery
+type HolePunchReq struct {
+	TargetNodeID [NodeIDSize]byte
+	TargetIP     [16]byte
+	TargetPort   uint16
+}
+
+func (HolePunchReq) Type() MessageType { return MsgHolePunchReq }
+
+type HolePunchProbe struct {
+	SenderNodeID [NodeIDSize]byte
+}
+
+func (HolePunchProbe) Type() MessageType { return MsgHolePunchProbe }
+
 type Discovery struct {
 	NodeID    [NodeIDSize]byte
 	Port      uint16

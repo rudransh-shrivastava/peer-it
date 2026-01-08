@@ -31,6 +31,9 @@ const (
 
 	MsgDiscovery MessageType = 0x0050
 
+	MsgHolePunchReq   MessageType = 0x0060
+	MsgHolePunchProbe MessageType = 0x0061
+
 	MsgError MessageType = 0x00FF
 )
 
@@ -60,6 +63,10 @@ func (t MessageType) String() string {
 		return "PEER_LIST_RES"
 	case MsgDiscovery:
 		return "DISCOVERY"
+	case MsgHolePunchReq:
+		return "HOLE_PUNCH_REQ"
+	case MsgHolePunchProbe:
+		return "HOLE_PUNCH_PROBE"
 	case MsgError:
 		return "ERROR"
 	default:
