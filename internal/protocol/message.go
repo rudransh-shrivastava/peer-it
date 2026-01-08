@@ -4,23 +4,51 @@ type Message interface {
 	Type() MessageType
 }
 
-type Ping struct{}
+type ChunkMeta struct {
+	Hash  [HashSize]byte
+	Index uint32
+	Size  uint32
+}
 
-func (Ping) Type() MessageType { return MsgPing }
+type ChunkReq struct {
+	ChunkIndex uint32
+	FileHash   [HashSize]byte
+}
 
-type Pong struct{}
+func (ChunkReq) Type() MessageType { return MsgChunkReq }
 
-func (Pong) Type() MessageType { return MsgPong }
+type ChunkRes struct {
+	ChunkIndex uint32
+	Data       []byte
+	FileHash   [HashSize]byte
+}
+
+func (ChunkRes) Type() MessageType { return MsgChunkRes }
+
+type Discovery struct {
+	FileCount uint16
+	NodeID    [NodeIDSize]byte
+	Port      uint16
+}
+
+func (Discovery) Type() MessageType { return MsgDiscovery }
+
+type Error struct {
+	Code    ErrorCode
+	Message string
+}
+
+func (Error) Type() MessageType { return MsgError }
+
+type FileEntry struct {
+	Hash [HashSize]byte
+	Name string
+	Size uint64
+}
 
 type FileListReq struct{}
 
 func (FileListReq) Type() MessageType { return MsgFileListReq }
-
-type FileEntry struct {
-	Hash [HashSize]byte
-	Size uint64 // File size in bytes
-	Name string
-}
 
 type FileListRes struct {
 	Files []FileEntry
@@ -34,56 +62,49 @@ type FileMetaReq struct {
 
 func (FileMetaReq) Type() MessageType { return MsgFileMetaReq }
 
-type ChunkMeta struct {
-	Index uint32
-	Size  uint32
-	Hash  [HashSize]byte
-}
-
 type FileMetaRes struct {
-	Hash         [HashSize]byte
-	Size         uint64
-	Name         string
-	MaxChunkSize uint32
 	Chunks       []ChunkMeta
+	Hash         [HashSize]byte
+	MaxChunkSize uint32
+	Name         string
+	Size         uint64
 }
 
 func (FileMetaRes) Type() MessageType { return MsgFileMetaRes }
 
-type ChunkReq struct {
-	FileHash   [HashSize]byte
-	ChunkIndex uint32
+type HolePunchProbe struct {
+	SenderNodeID [NodeIDSize]byte
 }
 
-func (ChunkReq) Type() MessageType { return MsgChunkReq }
+func (HolePunchProbe) Type() MessageType { return MsgHolePunchProbe }
 
-type ChunkRes struct {
-	FileHash   [HashSize]byte
-	ChunkIndex uint32
-	Data       []byte
+type HolePunchReq struct {
+	TargetIP     [16]byte
+	TargetNodeID [NodeIDSize]byte
+	TargetPort   uint16
 }
 
-func (ChunkRes) Type() MessageType { return MsgChunkRes }
+func (HolePunchReq) Type() MessageType { return MsgHolePunchReq }
 
 type PeerAnnounce struct {
+	FileCount uint16
 	NodeID    [NodeIDSize]byte
 	Port      uint16
-	FileCount uint16
 }
 
 func (PeerAnnounce) Type() MessageType { return MsgPeerAnnounce }
+
+type PeerInfo struct {
+	IP     [16]byte
+	NodeID [NodeIDSize]byte
+	Port   uint16
+}
 
 type PeerListReq struct {
 	FileHash [HashSize]byte
 }
 
 func (PeerListReq) Type() MessageType { return MsgPeerListReq }
-
-type PeerInfo struct {
-	NodeID [NodeIDSize]byte
-	IP     [16]byte
-	Port   uint16
-}
 
 type PeerListRes struct {
 	FileHash [HashSize]byte
@@ -92,31 +113,10 @@ type PeerListRes struct {
 
 func (PeerListRes) Type() MessageType { return MsgPeerListRes }
 
-type HolePunchReq struct {
-	TargetNodeID [NodeIDSize]byte
-	TargetIP     [16]byte
-	TargetPort   uint16
-}
+type Ping struct{}
 
-func (HolePunchReq) Type() MessageType { return MsgHolePunchReq }
+func (Ping) Type() MessageType { return MsgPing }
 
-type HolePunchProbe struct {
-	SenderNodeID [NodeIDSize]byte
-}
+type Pong struct{}
 
-func (HolePunchProbe) Type() MessageType { return MsgHolePunchProbe }
-
-type Discovery struct {
-	NodeID    [NodeIDSize]byte
-	Port      uint16
-	FileCount uint16
-}
-
-func (Discovery) Type() MessageType { return MsgDiscovery }
-
-type Error struct {
-	Code    ErrorCode
-	Message string
-}
-
-func (Error) Type() MessageType { return MsgError }
+func (Pong) Type() MessageType { return MsgPong }
