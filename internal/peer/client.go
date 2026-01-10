@@ -2,14 +2,11 @@ package peer
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/transport"
 )
-
-var ErrNotConnected = errors.New("not connected to tracker")
 
 type Client struct {
 	config      Config
@@ -54,30 +51,18 @@ func (c *Client) Connect(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) Ping(ctx context.Context) error {
-	if c.trackerPeer == nil {
-		return ErrNotConnected
-	}
+func (c *Client) SendToTracker(ctx context.Context, msg protocol.Message) error {
+	c.logger.Debug("Sending to tracker", "type", msg.Type().String())
+	return c.trackerPeer.Send(ctx, msg)
+}
 
-	c.logger.Debug("Sending Ping to tracker")
-	if err := c.trackerPeer.Send(ctx, &protocol.Ping{}); err != nil {
-		c.logger.Error("Failed to send Ping", "error", err)
-		return err
-	}
-
+func (c *Client) ReceiveFromTracker(ctx context.Context) (protocol.Message, error) {
 	msg, err := c.trackerPeer.Receive(ctx)
 	if err != nil {
-		c.logger.Error("Failed to receive response", "error", err)
-		return err
+		return nil, err
 	}
-
-	if _, ok := msg.(*protocol.Pong); !ok {
-		c.logger.Error("Expected Pong, got different message", "type", msg.Type().String())
-		return errors.New("expected Pong response")
-	}
-
-	c.logger.Info("Received Pong from tracker")
-	return nil
+	c.logger.Debug("Received from tracker", "type", msg.Type().String())
+	return msg, nil
 }
 
 func (c *Client) Shutdown() error {
