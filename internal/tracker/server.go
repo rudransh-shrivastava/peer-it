@@ -2,15 +2,15 @@ package tracker
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/transport"
-	"github.com/sirupsen/logrus"
 )
 
 type Server struct {
 	config    Config
-	logger    *logrus.Logger
+	logger    *slog.Logger
 	transport *transport.Transport
 }
 
@@ -22,7 +22,7 @@ func NewServer(cfg Config) (*Server, error) {
 
 	logger := cfg.Logger
 	if logger == nil {
-		logger = logrus.New()
+		logger = slog.Default()
 	}
 
 	return &Server{
@@ -42,7 +42,7 @@ func (s *Server) Shutdown() error {
 }
 
 func (s *Server) Start(ctx context.Context) error {
-	s.logger.WithField("addr", s.Addr()).Info("Tracker server started")
+	s.logger.Info("Tracker server started", "addr", s.Addr())
 
 	for {
 		select {
@@ -54,7 +54,7 @@ func (s *Server) Start(ctx context.Context) error {
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
-				s.logger.WithError(err).Error("Failed to accept connection")
+				s.logger.Error("Failed to accept connection", "error", err)
 				continue
 			}
 
@@ -65,10 +65,10 @@ func (s *Server) Start(ctx context.Context) error {
 
 func (s *Server) handlePeer(ctx context.Context, peer *transport.Peer) {
 	remoteAddr := peer.RemoteAddr()
-	s.logger.WithField("peer", remoteAddr).Info("Peer connected")
+	s.logger.Info("Peer connected", "peer", remoteAddr)
 	defer func() {
 		_ = peer.Close()
-		s.logger.WithField("peer", remoteAddr).Info("Peer disconnected")
+		s.logger.Info("Peer disconnected", "peer", remoteAddr)
 	}()
 
 	for {
@@ -81,7 +81,7 @@ func (s *Server) handlePeer(ctx context.Context, peer *transport.Peer) {
 				if ctx.Err() != nil {
 					return
 				}
-				s.logger.WithError(err).Debug("Failed to receive message")
+				s.logger.Debug("Failed to receive message", "error", err)
 				return
 			}
 
@@ -93,11 +93,11 @@ func (s *Server) handlePeer(ctx context.Context, peer *transport.Peer) {
 func (s *Server) handleMessage(ctx context.Context, peer *transport.Peer, msg protocol.Message) {
 	switch msg.Type() {
 	case protocol.MsgPing:
-		s.logger.WithField("peer", peer.RemoteAddr()).Debug("Received Ping, sending Pong")
+		s.logger.Debug("Received Ping, sending Pong", "peer", peer.RemoteAddr())
 		if err := peer.Send(ctx, &protocol.Pong{}); err != nil {
-			s.logger.WithError(err).Error("Failed to send Pong")
+			s.logger.Error("Failed to send Pong", "error", err)
 		}
 	default:
-		s.logger.WithField("type", msg.Type().String()).Warn("Unhandled message type")
+		s.logger.Warn("Unhandled message type", "type", msg.Type().String())
 	}
 }

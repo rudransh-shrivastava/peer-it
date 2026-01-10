@@ -25,4 +25,4 @@ sqlc:
 	@sqlc generate
 
 test:
-	@go test ./...
+	@go test ./... -v
