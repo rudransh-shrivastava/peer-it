@@ -14,8 +14,6 @@ reviews:
   assess_linked_issues: true
   auto_apply_labels: false
   auto_review:
-    base_branches:
-      - feature/*
     drafts: true
     enabled: true
   collapse_walkthrough: false
