@@ -5,14 +5,14 @@ type Message interface {
 }
 
 type ChunkMeta struct {
-	Hash  [HashSize]byte
+	Hash  FileHash
 	Index uint32
 	Size  uint32
 }
 
 type ChunkReq struct {
 	ChunkIndex uint32
-	FileHash   [HashSize]byte
+	FileHash   FileHash
 }
 
 func (ChunkReq) Type() MessageType { return MsgChunkReq }
@@ -20,7 +20,7 @@ func (ChunkReq) Type() MessageType { return MsgChunkReq }
 type ChunkRes struct {
 	ChunkIndex uint32
 	Data       []byte
-	FileHash   [HashSize]byte
+	FileHash   FileHash
 }
 
 func (ChunkRes) Type() MessageType { return MsgChunkRes }
@@ -41,10 +41,12 @@ type Error struct {
 func (Error) Type() MessageType { return MsgError }
 
 type FileEntry struct {
-	Hash [HashSize]byte
+	Hash FileHash
 	Name string
 	Size uint64
 }
+
+type FileHash [HashSize]byte
 
 type FileListReq struct{}
 
@@ -57,14 +59,14 @@ type FileListRes struct {
 func (FileListRes) Type() MessageType { return MsgFileListRes }
 
 type FileMetaReq struct {
-	Hash [HashSize]byte
+	Hash FileHash
 }
 
 func (FileMetaReq) Type() MessageType { return MsgFileMetaReq }
 
 type FileMetaRes struct {
 	Chunks       []ChunkMeta
-	Hash         [HashSize]byte
+	Hash         FileHash
 	MaxChunkSize uint32
 	Name         string
 	Size         uint64
@@ -87,9 +89,8 @@ type HolePunchReq struct {
 func (HolePunchReq) Type() MessageType { return MsgHolePunchReq }
 
 type PeerAnnounce struct {
-	FileCount uint16
-	NodeID    [NodeIDSize]byte
-	Port      uint16
+	FileCount  uint16
+	FileHashes []FileHash
 }
 
 func (PeerAnnounce) Type() MessageType { return MsgPeerAnnounce }
@@ -101,13 +102,13 @@ type PeerInfo struct {
 }
 
 type PeerListReq struct {
-	FileHash [HashSize]byte
+	FileHash FileHash
 }
 
 func (PeerListReq) Type() MessageType { return MsgPeerListReq }
 
 type PeerListRes struct {
-	FileHash [HashSize]byte
+	FileHash FileHash
 	Peers    []PeerInfo
 }
 

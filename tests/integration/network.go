@@ -11,14 +11,14 @@ import (
 )
 
 type Network struct {
-	tracker *tracker.Server
+	Tracker *tracker.Server
 	clients []*peer.Client
 	cancel  context.CancelFunc
 	ctx     context.Context
 	t       *testing.T
 }
 
-func NewNetwork(t *testing.T) *Network {
+func NewTestNetwork(t *testing.T) *Network {
 	t.Helper()
 
 	log := logger.NewLogger()
@@ -40,7 +40,7 @@ func NewNetwork(t *testing.T) *Network {
 	time.Sleep(50 * time.Millisecond)
 
 	return &Network{
-		tracker: srv,
+		Tracker: srv,
 		cancel:  cancel,
 		ctx:     ctx,
 		t:       t,
@@ -55,7 +55,7 @@ func (n *Network) NewClient() *peer.Client {
 	client, err := peer.NewClient(peer.Config{
 		Addr:        ":0",
 		Logger:      log,
-		TrackerAddr: n.tracker.Addr(),
+		TrackerAddr: n.Tracker.Addr(),
 	})
 	if err != nil {
 		n.t.Fatalf("Failed to create client: %v", err)
@@ -74,5 +74,5 @@ func (n *Network) Close() {
 	for _, c := range n.clients {
 		_ = c.Shutdown()
 	}
-	_ = n.tracker.Shutdown()
+	_ = n.Tracker.Shutdown()
 }

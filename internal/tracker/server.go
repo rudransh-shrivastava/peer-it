@@ -11,6 +11,7 @@ import (
 type Server struct {
 	config    Config
 	logger    *slog.Logger
+	store     *Store
 	transport *transport.Transport
 }
 
@@ -28,6 +29,7 @@ func NewServer(cfg Config) (*Server, error) {
 	return &Server{
 		config:    cfg,
 		logger:    logger,
+		store:     NewStore(),
 		transport: tr,
 	}, nil
 }
@@ -92,12 +94,30 @@ func (s *Server) handlePeer(ctx context.Context, peer *transport.Peer) {
 
 func (s *Server) handleMessage(ctx context.Context, peer *transport.Peer, msg protocol.Message) {
 	switch msg.Type() {
+	case protocol.MsgPeerAnnounce:
+		s.logger.Debug("Received PeerAnnounce, adding peer to database", "peer", peer.RemoteAddr())
+		announceMsg, _ := msg.(*protocol.PeerAnnounce)
+		s.handlePeerAnnounceMessage(peer, *announceMsg)
 	case protocol.MsgPing:
 		s.logger.Debug("Received Ping, sending Pong", "peer", peer.RemoteAddr())
-		if err := peer.Send(ctx, &protocol.Pong{}); err != nil {
-			s.logger.Error("Failed to send Pong", "error", err)
-		}
+		s.handlePingMessage(ctx, peer)
 	default:
 		s.logger.Warn("Unhandled message type", "type", msg.Type().String())
+	}
+}
+
+func (s *Server) handlePeerAnnounceMessage(peer *transport.Peer, msg protocol.PeerAnnounce) {
+	if msg.FileCount != uint16(len(msg.FileHashes)) {
+		s.logger.Debug("Received malformed PeerAnnounce, files count does not equal file hashes",
+			"peer", peer.RemoteAddr(),
+		)
+	}
+
+	added := s.store.AddPeer(msg.FileHashes, peer)
+	s.logger.Debug("Added peer to files", "peer", peer.RemoteAddr(), "count", added)
+}
+func (s *Server) handlePingMessage(ctx context.Context, peer *transport.Peer) {
+	if err := peer.Send(ctx, &protocol.Pong{}); err != nil {
+		s.logger.Error("Failed to send Pong", "error", err)
 	}
 }

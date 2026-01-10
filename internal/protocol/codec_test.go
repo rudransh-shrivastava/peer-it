@@ -343,10 +343,12 @@ func TestCodecPeerAnnounce(t *testing.T) {
 	codec := NewCodec()
 	var buf bytes.Buffer
 
+	hash1 := testHash("file1")
+	hash2 := testHash("file2")
+
 	msg := &PeerAnnounce{
-		NodeID:    testNodeID("test-node-1"),
-		Port:      59000,
-		FileCount: 10,
+		FileCount:  2,
+		FileHashes: []FileHash{hash1, hash2},
 	}
 
 	if err := codec.Encode(&buf, msg); err != nil {
@@ -363,12 +365,12 @@ func TestCodecPeerAnnounce(t *testing.T) {
 		t.Fatalf("Expected *PeerAnnounce, got %T", decoded)
 	}
 
-	if decodedMsg.Port != 59000 {
-		t.Errorf("Expected port 59000, got %d", decodedMsg.Port)
+	if decodedMsg.FileCount != 2 {
+		t.Errorf("Expected file count 2, got %d", decodedMsg.FileCount)
 	}
 
-	if decodedMsg.FileCount != 10 {
-		t.Errorf("Expected file count 10, got %d", decodedMsg.FileCount)
+	if len(decodedMsg.FileHashes) != 2 {
+		t.Errorf("Expected 2 file hashes, got %d", len(decodedMsg.FileHashes))
 	}
 }
 
@@ -489,8 +491,8 @@ func TestMessageTypeString(t *testing.T) {
 	}
 }
 
-func testHash(s string) [HashSize]byte {
-	var h [HashSize]byte
+func testHash(s string) FileHash {
+	var h FileHash
 	copy(h[:], []byte(s))
 	return h
 }

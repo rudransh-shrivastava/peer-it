@@ -20,13 +20,13 @@ const (
 )
 
 type PrettyHandler struct {
-	mu  *sync.Mutex
+	mu  sync.Mutex
 	out io.Writer
 }
 
 func NewPrettyHandler(out io.Writer) *PrettyHandler {
 	return &PrettyHandler{
-		mu:  &sync.Mutex{},
+		mu:  sync.Mutex{},
 		out: out,
 	}
 }
