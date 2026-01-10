@@ -1,9 +1,9 @@
 package peer
 
-import "github.com/sirupsen/logrus"
+import "log/slog"
 
 type Config struct {
 	Addr        string
-	Logger      *logrus.Logger
+	Logger      *slog.Logger
 	TrackerAddr string
 }

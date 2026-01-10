@@ -11,15 +11,15 @@ var rootCmd = &cobra.Command{
 	Use:  `peer-it`,
 	Long: `peer-it is a peer to peer file transfer application`,
 	Run: func(cmd *cobra.Command, args []string) {
-		logger := logger.NewLogger()
-		logger.Info("peer-it is a peer to peer file transfer application")
+		log := logger.NewLogger()
+		log.Info("peer-it is a peer to peer file transfer application")
 	},
 }
 
 func Execute() {
-	logger := logger.NewLogger()
+	log := logger.NewLogger()
 	if err := rootCmd.Execute(); err != nil {
-		logger.Fatal(err)
+		log.Error("Command failed", "error", err)
 		os.Exit(1)
 	}
 }

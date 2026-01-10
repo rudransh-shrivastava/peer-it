@@ -3,17 +3,17 @@ package peer
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/transport"
-	"github.com/sirupsen/logrus"
 )
 
 var ErrNotConnected = errors.New("not connected to tracker")
 
 type Client struct {
 	config      Config
-	logger      *logrus.Logger
+	logger      *slog.Logger
 	trackerPeer *transport.Peer
 	transport   *transport.Transport
 }
@@ -26,7 +26,7 @@ func NewClient(cfg Config) (*Client, error) {
 
 	logger := cfg.Logger
 	if logger == nil {
-		logger = logrus.New()
+		logger = slog.Default()
 	}
 
 	return &Client{
@@ -41,16 +41,16 @@ func (c *Client) Addr() string {
 }
 
 func (c *Client) Connect(ctx context.Context) error {
-	c.logger.WithField("tracker", c.config.TrackerAddr).Info("Connecting to tracker")
+	c.logger.Info("Connecting to tracker", "tracker", c.config.TrackerAddr)
 
 	peer, err := c.transport.Dial(ctx, c.config.TrackerAddr)
 	if err != nil {
-		c.logger.WithError(err).Error("Failed to connect to tracker")
+		c.logger.Error("Failed to connect to tracker", "error", err)
 		return err
 	}
 
 	c.trackerPeer = peer
-	c.logger.WithField("tracker", c.config.TrackerAddr).Info("Connected to tracker")
+	c.logger.Info("Connected to tracker", "tracker", c.config.TrackerAddr)
 	return nil
 }
 
@@ -61,18 +61,18 @@ func (c *Client) Ping(ctx context.Context) error {
 
 	c.logger.Debug("Sending Ping to tracker")
 	if err := c.trackerPeer.Send(ctx, &protocol.Ping{}); err != nil {
-		c.logger.WithError(err).Error("Failed to send Ping")
+		c.logger.Error("Failed to send Ping", "error", err)
 		return err
 	}
 
 	msg, err := c.trackerPeer.Receive(ctx)
 	if err != nil {
-		c.logger.WithError(err).Error("Failed to receive response")
+		c.logger.Error("Failed to receive response", "error", err)
 		return err
 	}
 
 	if _, ok := msg.(*protocol.Pong); !ok {
-		c.logger.WithField("type", msg.Type().String()).Error("Expected Pong, got different message")
+		c.logger.Error("Expected Pong, got different message", "type", msg.Type().String())
 		return errors.New("expected Pong response")
 	}
 
