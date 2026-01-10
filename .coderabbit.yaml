@@ -2,9 +2,6 @@
 
 chat:
   auto_reply: true
-code_generation:
-  docstrings:
-    language: en-US
 early_access: true
 issue_enrichment:
   auto_enrich:
@@ -12,8 +9,11 @@ issue_enrichment:
 language: en-US
 reviews:
   assess_linked_issues: true
-  auto_apply_labels: false
+  auto_apply_labels: true
   auto_review:
+    base-branches:
+      - dev
+      - feature/*
     drafts: true
     enabled: true
   collapse_walkthrough: false
