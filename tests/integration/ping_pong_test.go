@@ -7,7 +7,7 @@ import (
 )
 
 func TestPeerTrackerPingPong(t *testing.T) {
-	net := NewNetwork(t)
+	net := NewTestNetwork(t)
 	defer net.Close()
 
 	client := net.NewClient()
