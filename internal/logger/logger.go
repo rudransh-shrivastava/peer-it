@@ -1,44 +1,93 @@
 package logger
 
-import "github.com/sirupsen/logrus"
+import (
+	"context"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"sync"
+	"time"
+)
 
-type CustomFormatter struct {
-	logrus.TextFormatter
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+	colorGray   = "\033[37m"
+)
+
+type PrettyHandler struct {
+	mu  *sync.Mutex
+	out io.Writer
 }
 
-func (f *CustomFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-	timestamp := entry.Time.Format("15:04:05") // Hour:Minute:Second format
-
-	level := entry.Level.String()
-	message := entry.Message
-
-	log := timestamp + " " + f.colorizeLevel(level) + " " + message + "\n"
-
-	return []byte(log), nil
+func NewPrettyHandler(out io.Writer) *PrettyHandler {
+	return &PrettyHandler{
+		mu:  &sync.Mutex{},
+		out: out,
+	}
 }
 
-func (f *CustomFormatter) colorizeLevel(level string) string {
+func (h *PrettyHandler) Enabled(_ context.Context, _ slog.Level) bool {
+	return true
+}
+
+func (h *PrettyHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	timestamp := r.Time.Format(time.TimeOnly)
+	level := h.colorizeLevel(r.Level)
+	msg := r.Message
+
+	line := fmt.Sprintf("%s %s %s", timestamp, level, msg)
+
+	r.Attrs(func(a slog.Attr) bool {
+		line += fmt.Sprintf(" %s%s%s=%v", colorGray, a.Key, colorReset, a.Value.Any())
+		return true
+	})
+
+	_, err := fmt.Fprintln(h.out, line)
+	return err
+}
+
+func (h *PrettyHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return h
+}
+
+func (h *PrettyHandler) WithGroup(name string) slog.Handler {
+	return h
+}
+
+func (h *PrettyHandler) colorizeLevel(level slog.Level) string {
 	var color string
+	var name string
 
 	switch level {
-	case "info":
-		color = "\033[32m" // Green
-	case "warning":
-		color = "\033[33m" // Yellow
-	case "error":
-		color = "\033[31m" // Red
-	case "debug":
-		color = "\033[34m" // Blue
+	case slog.LevelDebug:
+		color = colorBlue
+		name = "DEBUG"
+	case slog.LevelInfo:
+		color = colorGreen
+		name = "INFO"
+	case slog.LevelWarn:
+		color = colorYellow
+		name = "WARN"
+	case slog.LevelError:
+		color = colorRed
+		name = "ERROR"
 	default:
-		color = "\033[37m" // Default color
+		color = colorGray
+		name = level.String()
 	}
 
-	return color + level + "\033[0m"
+	return fmt.Sprintf("%s%-5s%s", color, name, colorReset)
 }
 
-func NewLogger() *logrus.Logger {
-	log := logrus.New()
-	log.SetFormatter(&CustomFormatter{})
-	log.SetLevel(logrus.DebugLevel)
-	return log
+func NewLogger() *slog.Logger {
+	handler := NewPrettyHandler(os.Stdout)
+	return slog.New(handler)
 }

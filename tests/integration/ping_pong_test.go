@@ -13,7 +13,6 @@ import (
 func TestPeerTrackerPingPong(t *testing.T) {
 	log := logger.NewLogger()
 
-	// Start tracker
 	srv, err := tracker.NewServer(tracker.Config{
 		Addr:   ":0",
 		Logger: log,
@@ -30,10 +29,8 @@ func TestPeerTrackerPingPong(t *testing.T) {
 		serverErr <- srv.Start(ctx)
 	}()
 
-	// Give server time to start
 	time.Sleep(50 * time.Millisecond)
 
-	// Create peer client
 	client, err := peer.NewClient(peer.Config{
 		Addr:        ":0",
 		Logger:      log,
@@ -44,21 +41,17 @@ func TestPeerTrackerPingPong(t *testing.T) {
 	}
 	defer func() { _ = client.Shutdown() }()
 
-	// Connect to tracker
 	if err := client.Connect(ctx); err != nil {
 		t.Fatalf("Failed to connect: %v", err)
 	}
 
-	// Send ping, expect pong
 	if err := client.Ping(ctx); err != nil {
 		t.Fatalf("Ping failed: %v", err)
 	}
 
-	// Shutdown
 	cancel()
 	_ = srv.Shutdown()
 
-	// Check server exited cleanly
 	select {
 	case err := <-serverErr:
 		if err != nil && err != context.Canceled {
