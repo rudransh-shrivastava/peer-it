@@ -347,8 +347,11 @@ func TestCodecPeerAnnounce(t *testing.T) {
 	hash2 := testHash("file2")
 
 	msg := &PeerAnnounce{
-		FileCount:  2,
-		FileHashes: []FileHash{hash1, hash2},
+		FileCount: 2,
+		Files: []FileEntry{
+			{Hash: hash1, Name: "file1.txt", Size: 1024},
+			{Hash: hash2, Name: "file2.txt", Size: 2048},
+		},
 	}
 
 	if err := codec.Encode(&buf, msg); err != nil {
@@ -369,8 +372,8 @@ func TestCodecPeerAnnounce(t *testing.T) {
 		t.Errorf("Expected file count 2, got %d", decodedMsg.FileCount)
 	}
 
-	if len(decodedMsg.FileHashes) != 2 {
-		t.Errorf("Expected 2 file hashes, got %d", len(decodedMsg.FileHashes))
+	if len(decodedMsg.Files) != 2 {
+		t.Errorf("Expected 2 files, got %d", len(decodedMsg.Files))
 	}
 }
 

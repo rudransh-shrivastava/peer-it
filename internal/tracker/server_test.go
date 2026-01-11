@@ -70,8 +70,10 @@ func TestServerHandlePeerAnnounce(t *testing.T) {
 
 	hash1 := protocol.FileHash{0x01}
 	announce := &protocol.PeerAnnounce{
-		FileCount:  1,
-		FileHashes: []protocol.FileHash{hash1},
+		FileCount: 1,
+		Files: []protocol.FileEntry{
+			{Hash: hash1, Name: "file1.txt", Size: 1024},
+		},
 	}
 
 	if err := client.Send(ctx, announce); err != nil {
@@ -80,8 +82,8 @@ func TestServerHandlePeerAnnounce(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	if len(srv.store.peers[hash1]) != 1 {
-		t.Errorf("Expected 1 peer in store, got %d", len(srv.store.peers[hash1]))
+	if srv.store.files[hash1] == nil || len(srv.store.files[hash1].peers) != 1 {
+		t.Errorf("Expected 1 peer in store for hash1")
 	}
 }
 
