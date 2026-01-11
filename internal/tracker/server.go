@@ -2,6 +2,8 @@ package tracker
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"log/slog"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/protocol"
@@ -111,8 +113,16 @@ func (s *Server) handlePeerAnnounceMessage(peer *transport.Peer, msg protocol.Pe
 		s.logger.Debug("Received malformed PeerAnnounce, files count does not equal number of files",
 			"peer", peer.RemoteAddr(),
 		)
+		return
 	}
-	// TODO: add a check for malformed hash
+	for _, file := range msg.Files {
+		hash := generateHash(&file)
+		if hash != file.Hash {
+			s.logger.Debug("Received malformed PeerAnnounce, invalid file hash", "peer", peer.RemoteAddr())
+			return
+		}
+	}
+
 	addedFiles := s.store.AddFiles(&msg.Files)
 	s.logger.Debug("Added files", "peer", peer.RemoteAddr(), "count", addedFiles)
 	addedPeerToFiles := s.store.AddPeer(&msg.Files, peer)
@@ -123,4 +133,9 @@ func (s *Server) handlePingMessage(ctx context.Context, peer *transport.Peer) {
 	if err := peer.Send(ctx, &protocol.Pong{}); err != nil {
 		s.logger.Error("Failed to send Pong", "error", err)
 	}
+}
+
+func generateHash(file *protocol.FileEntry) protocol.FileHash {
+	data := fmt.Sprintf("%s%d", file.Name, file.Size)
+	return sha256.Sum256([]byte(data))
 }
