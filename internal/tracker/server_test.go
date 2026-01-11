@@ -2,6 +2,8 @@ package tracker
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"testing"
 	"time"
 
@@ -68,11 +70,13 @@ func TestServerHandlePeerAnnounce(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	hash1 := protocol.FileHash{0x01}
+	fileName := "file1.txt"
+	fileSize := uint64(1024)
+	hash1 := sha256.Sum256([]byte(fmt.Sprintf("%s%d", fileName, fileSize)))
 	announce := &protocol.PeerAnnounce{
 		FileCount: 1,
 		Files: []protocol.FileEntry{
-			{Hash: hash1, Name: "file1.txt", Size: 1024},
+			{Hash: hash1, Name: fileName, Size: fileSize},
 		},
 	}
 
@@ -84,6 +88,99 @@ func TestServerHandlePeerAnnounce(t *testing.T) {
 
 	if srv.store.files[hash1] == nil || len(srv.store.files[hash1].peers) != 1 {
 		t.Errorf("Expected 1 peer in store for hash1")
+	}
+}
+
+func TestGenerateHash(t *testing.T) {
+	file := &protocol.FileEntry{
+		Name: "example.txt",
+		Size: 2048,
+	}
+
+	expectedHash := sha256.Sum256([]byte(fmt.Sprintf("%s%d", file.Name, file.Size)))
+	actualHash := generateHash(file)
+
+	if actualHash != expectedHash {
+		t.Errorf("Hash mismatch: expected %x, got %x", expectedHash, actualHash)
+	}
+}
+
+func TestGenerateHashDifferentInputs(t *testing.T) {
+	file1 := &protocol.FileEntry{Name: "file.txt", Size: 100}
+	file2 := &protocol.FileEntry{Name: "file.txt", Size: 200}
+	file3 := &protocol.FileEntry{Name: "other.txt", Size: 100}
+
+	hash1 := generateHash(file1)
+	hash2 := generateHash(file2)
+	hash3 := generateHash(file3)
+
+	if hash1 == hash2 {
+		t.Error("Different sizes should produce different hashes")
+	}
+
+	if hash1 == hash3 {
+		t.Error("Different names should produce different hashes")
+	}
+}
+
+func TestServerHandlePeerAnnounceMismatchedFileCount(t *testing.T) {
+	srv, client := setupServerClient(t)
+	defer func() { _ = srv.Shutdown() }()
+	defer func() { _ = client.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	fileName := "file1.txt"
+	fileSize := uint64(1024)
+	hash1 := sha256.Sum256([]byte(fmt.Sprintf("%s%d", fileName, fileSize)))
+
+	// FileCount is 2 but only 1 file provided
+	announce := &protocol.PeerAnnounce{
+		FileCount: 2,
+		Files: []protocol.FileEntry{
+			{Hash: hash1, Name: fileName, Size: fileSize},
+		},
+	}
+
+	if err := client.Send(ctx, announce); err != nil {
+		t.Fatalf("Send PeerAnnounce failed: %v", err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Should NOT be added to store due to validation failure
+	if srv.store.files[hash1] != nil {
+		t.Errorf("Expected file to NOT be in store due to mismatched FileCount")
+	}
+}
+
+func TestServerHandlePeerAnnounceInvalidHash(t *testing.T) {
+	srv, client := setupServerClient(t)
+	defer func() { _ = srv.Shutdown() }()
+	defer func() { _ = client.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Use an invalid hash that doesn't match name+size
+	invalidHash := protocol.FileHash{0x01, 0x02, 0x03}
+	announce := &protocol.PeerAnnounce{
+		FileCount: 1,
+		Files: []protocol.FileEntry{
+			{Hash: invalidHash, Name: "file1.txt", Size: 1024},
+		},
+	}
+
+	if err := client.Send(ctx, announce); err != nil {
+		t.Fatalf("Send PeerAnnounce failed: %v", err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Should NOT be added to store due to invalid hash
+	if srv.store.files[invalidHash] != nil {
+		t.Errorf("Expected file to NOT be in store due to invalid hash")
 	}
 }
 
