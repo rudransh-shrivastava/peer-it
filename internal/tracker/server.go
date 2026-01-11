@@ -107,15 +107,18 @@ func (s *Server) handleMessage(ctx context.Context, peer *transport.Peer, msg pr
 }
 
 func (s *Server) handlePeerAnnounceMessage(peer *transport.Peer, msg protocol.PeerAnnounce) {
-	if msg.FileCount != uint16(len(msg.FileHashes)) {
-		s.logger.Debug("Received malformed PeerAnnounce, files count does not equal file hashes",
+	if msg.FileCount != uint16(len(msg.Files)) {
+		s.logger.Debug("Received malformed PeerAnnounce, files count does not equal number of files",
 			"peer", peer.RemoteAddr(),
 		)
 	}
-
-	added := s.store.AddPeer(msg.FileHashes, peer)
-	s.logger.Debug("Added peer to files", "peer", peer.RemoteAddr(), "count", added)
+	// TODO: add a check for malformed hash
+	addedFiles := s.store.AddFiles(&msg.Files)
+	s.logger.Debug("Added files", "peer", peer.RemoteAddr(), "count", addedFiles)
+	addedPeerToFiles := s.store.AddPeer(&msg.Files, peer)
+	s.logger.Debug("Added peer to files", "peer", peer.RemoteAddr(), "count", addedPeerToFiles)
 }
+
 func (s *Server) handlePingMessage(ctx context.Context, peer *transport.Peer) {
 	if err := peer.Send(ctx, &protocol.Pong{}); err != nil {
 		s.logger.Error("Failed to send Pong", "error", err)

@@ -89,8 +89,8 @@ type HolePunchReq struct {
 func (HolePunchReq) Type() MessageType { return MsgHolePunchReq }
 
 type PeerAnnounce struct {
-	FileCount  uint16
-	FileHashes []FileHash
+	FileCount uint16
+	Files     []FileEntry
 }
 
 func (PeerAnnounce) Type() MessageType { return MsgPeerAnnounce }
