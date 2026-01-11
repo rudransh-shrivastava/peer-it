@@ -17,8 +17,11 @@ func TestPeerTrackerAnnounce(t *testing.T) {
 	hash1 := sha256.Sum256([]byte("File Name 1"))
 	hash2 := sha256.Sum256([]byte("File Name 2"))
 	announceMsg := &protocol.PeerAnnounce{
-		FileCount:  2,
-		FileHashes: []protocol.FileHash{hash1, hash2},
+		FileCount: 2,
+		Files: []protocol.FileEntry{
+			{Hash: hash1, Name: "File Name 1", Size: 1024},
+			{Hash: hash2, Name: "File Name 2", Size: 2048},
+		},
 	}
 
 	if err := client.Connect(ctx); err != nil {
