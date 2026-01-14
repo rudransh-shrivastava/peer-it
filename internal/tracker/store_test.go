@@ -15,7 +15,7 @@ func TestStoreAddFiles(t *testing.T) {
 		{Hash: protocol.FileHash{0x02}, Name: "file2.txt", Size: 2048},
 	}
 
-	added := store.AddFiles(&files)
+	added := store.AddFiles(files)
 	if added != 2 {
 		t.Errorf("Expected 2 files added, got %d", added)
 	}
@@ -36,8 +36,8 @@ func TestStoreAddFilesNoDuplicate(t *testing.T) {
 		{Hash: protocol.FileHash{0x01}, Name: "file1.txt", Size: 1024},
 	}
 
-	added1 := store.AddFiles(&files)
-	added2 := store.AddFiles(&files)
+	added1 := store.AddFiles(files)
+	added2 := store.AddFiles(files)
 
 	if added1 != 1 {
 		t.Errorf("First add: expected 1, got %d", added1)
@@ -57,11 +57,11 @@ func TestStoreAddPeer(t *testing.T) {
 	}
 
 	// First add the files to the store
-	store.AddFiles(&files)
+	store.AddFiles(files)
 
 	peer1 := &transport.Peer{}
 
-	added := store.AddPeer(&files, peer1)
+	added := store.AddPeer(files, peer1)
 	if added != 1 {
 		t.Errorf("Expected 1 peer added, got %d", added)
 	}
@@ -80,12 +80,12 @@ func TestStoreAddPeerNoDuplicate(t *testing.T) {
 	}
 
 	// First add the files to the store
-	store.AddFiles(&files)
+	store.AddFiles(files)
 
 	peer1 := &transport.Peer{}
 
-	added1 := store.AddPeer(&files, peer1)
-	added2 := store.AddPeer(&files, peer1)
+	added1 := store.AddPeer(files, peer1)
+	added2 := store.AddPeer(files, peer1)
 
 	if added1 != 1 {
 		t.Errorf("First add: expected 1, got %d", added1)
@@ -109,15 +109,39 @@ func TestStoreAddPeerMultiplePeers(t *testing.T) {
 	}
 
 	// First add the files to the store
-	store.AddFiles(&files)
+	store.AddFiles(files)
 
 	peer1 := &transport.Peer{}
 	peer2 := &transport.Peer{}
 
-	store.AddPeer(&files, peer1)
-	store.AddPeer(&files, peer2)
+	store.AddPeer(files, peer1)
+	store.AddPeer(files, peer2)
 
 	if len(store.files[hash1].peers) != 2 {
 		t.Errorf("Expected 2 different peers, got %d", len(store.files[hash1].peers))
+	}
+}
+
+func TestStoreListFilesEmpty(t *testing.T) {
+	store := NewStore()
+
+	files := store.ListFiles()
+	if len(files) != 0 {
+		t.Errorf("Expected 0 files, got %d", len(files))
+	}
+}
+
+func TestStoreListFiles(t *testing.T) {
+	store := NewStore()
+
+	inputFiles := []protocol.FileEntry{
+		{Hash: protocol.FileHash{0x01}, Name: "file1.txt", Size: 1024},
+		{Hash: protocol.FileHash{0x02}, Name: "file2.txt", Size: 2048},
+	}
+	store.AddFiles(inputFiles)
+
+	files := store.ListFiles()
+	if len(files) != 2 {
+		t.Errorf("Expected 2 files, got %d", len(files))
 	}
 }

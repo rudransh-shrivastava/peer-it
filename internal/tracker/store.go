@@ -5,12 +5,11 @@ import (
 	"sync"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/protocol"
-	"github.com/rudransh-shrivastava/peer-it/internal/transport"
 )
 
 type file struct {
 	metadata *protocol.FileEntry
-	peers    []*transport.Peer
+	peers    []Conn
 }
 
 type Store struct {
@@ -24,12 +23,12 @@ func NewStore() *Store {
 	}
 }
 
-func (s *Store) AddPeer(files *[]protocol.FileEntry, peer *transport.Peer) int {
+func (s *Store) AddPeer(files []protocol.FileEntry, peer Conn) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	added := 0
-	for _, file := range *files {
+	for _, file := range files {
 		if slices.Contains(s.files[file.Hash].peers, peer) {
 			continue
 		}
@@ -39,20 +38,31 @@ func (s *Store) AddPeer(files *[]protocol.FileEntry, peer *transport.Peer) int {
 	return added
 }
 
-func (s *Store) AddFiles(files *[]protocol.FileEntry) int {
+func (s *Store) AddFiles(files []protocol.FileEntry) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	added := 0
 
-	for _, f := range *files {
+	for _, f := range files {
 		if _, exists := s.files[f.Hash]; exists {
 			continue
 		}
 		s.files[f.Hash] = &file{
 			metadata: &f,
-			peers:    []*transport.Peer{},
+			peers:    []Conn{},
 		}
 		added++
 	}
 	return added
+}
+
+func (s *Store) ListFiles() []protocol.FileEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	files := []protocol.FileEntry{}
+	for _, file := range s.files {
+		files = append(files, *file.metadata)
+	}
+	return files
 }

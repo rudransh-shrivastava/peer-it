@@ -5,44 +5,49 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"log/slog"
+	"net"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/protocol"
 	"github.com/rudransh-shrivastava/peer-it/internal/transport"
 )
 
 type Server struct {
-	config    Config
-	logger    *slog.Logger
-	store     *Store
-	transport *transport.Transport
+	config   Config
+	listener Listener
+	logger   *slog.Logger
+	store    *Store
 }
 
 func NewServer(cfg Config) (*Server, error) {
-	tr, err := transport.NewTransport(cfg.Addr)
-	if err != nil {
-		return nil, err
-	}
-
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
 
+	listener := cfg.Listener
+	if listener == nil {
+		tr, err := transport.NewTransport(cfg.Addr)
+		if err != nil {
+			return nil, err
+		}
+		listener = &transportAdapter{tr}
+	}
+
 	return &Server{
-		config:    cfg,
-		logger:    logger,
-		store:     NewStore(),
-		transport: tr,
+		config:   cfg,
+		listener: listener,
+		logger:   logger,
+		store:    NewStore(),
 	}, nil
 }
 
 func (s *Server) Addr() string {
-	return s.transport.LocalAddr().String()
+	return s.listener.LocalAddr().String()
 }
 
 func (s *Server) Shutdown() error {
 	s.logger.Info("Shutting down tracker server")
-	return s.transport.Close()
+	return s.listener.Close()
 }
 
 func (s *Server) Start(ctx context.Context) error {
@@ -53,7 +58,7 @@ func (s *Server) Start(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			peer, err := s.transport.Accept(ctx)
+			conn, err := s.listener.Accept(ctx)
 			if err != nil {
 				if ctx.Err() != nil {
 					return ctx.Err()
@@ -62,16 +67,16 @@ func (s *Server) Start(ctx context.Context) error {
 				continue
 			}
 
-			go s.handlePeer(ctx, peer)
+			go s.handleConn(ctx, conn)
 		}
 	}
 }
 
-func (s *Server) handlePeer(ctx context.Context, peer *transport.Peer) {
-	remoteAddr := peer.RemoteAddr()
+func (s *Server) handleConn(ctx context.Context, conn Conn) {
+	remoteAddr := conn.RemoteAddr()
 	s.logger.Info("Peer connected", "peer", remoteAddr)
 	defer func() {
-		_ = peer.Close()
+		_ = conn.Close()
 		s.logger.Info("Peer disconnected", "peer", remoteAddr)
 	}()
 
@@ -80,7 +85,7 @@ func (s *Server) handlePeer(ctx context.Context, peer *transport.Peer) {
 		case <-ctx.Done():
 			return
 		default:
-			msg, err := peer.Receive(ctx)
+			msg, err := conn.Receive(ctx)
 			if err != nil {
 				if ctx.Err() != nil {
 					return
@@ -89,53 +94,83 @@ func (s *Server) handlePeer(ctx context.Context, peer *transport.Peer) {
 				return
 			}
 
-			s.handleMessage(ctx, peer, msg)
+			s.handleMessage(ctx, conn, msg)
 		}
 	}
 }
 
-func (s *Server) handleMessage(ctx context.Context, peer *transport.Peer, msg protocol.Message) {
+func (s *Server) handleMessage(ctx context.Context, conn Conn, msg protocol.Message) {
 	switch msg.Type() {
+	case protocol.MsgFileListReq:
+		s.logger.Debug("Received FileListReq, sending file list to peer", "peer", conn.RemoteAddr())
+		s.handleFileListReqMessage(ctx, conn)
 	case protocol.MsgPeerAnnounce:
-		s.logger.Debug("Received PeerAnnounce, adding peer to database", "peer", peer.RemoteAddr())
+		s.logger.Debug("Received PeerAnnounce, adding peer to database", "peer", conn.RemoteAddr())
 		announceMsg, _ := msg.(*protocol.PeerAnnounce)
-		s.handlePeerAnnounceMessage(peer, *announceMsg)
+		s.handlePeerAnnounceMessage(conn, *announceMsg)
 	case protocol.MsgPing:
-		s.logger.Debug("Received Ping, sending Pong", "peer", peer.RemoteAddr())
-		s.handlePingMessage(ctx, peer)
+		s.logger.Debug("Received Ping, sending Pong", "peer", conn.RemoteAddr())
+		s.handlePingMessage(ctx, conn)
 	default:
 		s.logger.Warn("Unhandled message type", "type", msg.Type().String())
 	}
 }
 
-func (s *Server) handlePeerAnnounceMessage(peer *transport.Peer, msg protocol.PeerAnnounce) {
+func (s *Server) handleFileListReqMessage(ctx context.Context, conn Conn) {
+	files := s.store.ListFiles()
+
+	fileListResMsg := protocol.FileListRes{
+		Files: files,
+	}
+	if err := conn.Send(ctx, &fileListResMsg); err != nil {
+		s.logger.Error("Failed to send FileListRes", "peer", conn.RemoteAddr(), "error", err)
+	}
+}
+
+func (s *Server) handlePeerAnnounceMessage(conn Conn, msg protocol.PeerAnnounce) {
 	if msg.FileCount != uint16(len(msg.Files)) {
 		s.logger.Debug("Received malformed PeerAnnounce, files count does not equal number of files",
-			"peer", peer.RemoteAddr(),
+			"peer", conn.RemoteAddr(),
 		)
 		return
 	}
 	for _, file := range msg.Files {
 		hash := generateHash(&file)
 		if hash != file.Hash {
-			s.logger.Debug("Received malformed PeerAnnounce, invalid file hash", "peer", peer.RemoteAddr())
+			s.logger.Debug("Received malformed PeerAnnounce, invalid file hash", "peer", conn.RemoteAddr())
 			return
 		}
 	}
 
-	addedFiles := s.store.AddFiles(&msg.Files)
-	s.logger.Debug("Added files", "peer", peer.RemoteAddr(), "count", addedFiles)
-	addedPeerToFiles := s.store.AddPeer(&msg.Files, peer)
-	s.logger.Debug("Added peer to files", "peer", peer.RemoteAddr(), "count", addedPeerToFiles)
+	addedFiles := s.store.AddFiles(msg.Files)
+	s.logger.Debug("Added files", "peer", conn.RemoteAddr(), "count", addedFiles)
+	addedPeerToFiles := s.store.AddPeer(msg.Files, conn)
+	s.logger.Debug("Added peer to files", "peer", conn.RemoteAddr(), "count", addedPeerToFiles)
 }
 
-func (s *Server) handlePingMessage(ctx context.Context, peer *transport.Peer) {
-	if err := peer.Send(ctx, &protocol.Pong{}); err != nil {
-		s.logger.Error("Failed to send Pong", "error", err)
+func (s *Server) handlePingMessage(ctx context.Context, conn Conn) {
+	if err := conn.Send(ctx, &protocol.Pong{}); err != nil {
+		s.logger.Error("Failed to send Pong", "peer", conn.RemoteAddr(), "error", err)
 	}
 }
 
 func generateHash(file *protocol.FileEntry) protocol.FileHash {
 	data := fmt.Sprintf("%s%d", file.Name, file.Size)
 	return sha256.Sum256([]byte(data))
+}
+
+type transportAdapter struct {
+	tr *transport.Transport
+}
+
+func (a *transportAdapter) Accept(ctx context.Context) (Conn, error) {
+	return a.tr.Accept(ctx)
+}
+
+func (a *transportAdapter) Close() error {
+	return a.tr.Close()
+}
+
+func (a *transportAdapter) LocalAddr() net.Addr {
+	return a.tr.LocalAddr()
 }

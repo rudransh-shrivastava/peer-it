@@ -39,11 +39,10 @@ func (p *Peer) OpenDataStream(ctx context.Context) (*quic.Stream, error) {
 }
 
 func (p *Peer) Receive(ctx context.Context) (protocol.Message, error) {
-	stream, err := p.acceptControlStream(ctx)
+	stream, err := p.acceptStream(ctx)
 	if err != nil {
 		return nil, err
 	}
-
 	return p.codec.Decode(stream)
 }
 
@@ -56,11 +55,10 @@ func (p *Peer) RemoteAddr() string {
 }
 
 func (p *Peer) Send(ctx context.Context, msg protocol.Message) error {
-	stream, err := p.getControlStream(ctx)
+	stream, err := p.openStream(ctx)
 	if err != nil {
 		return err
 	}
-
 	return p.codec.Encode(stream, msg)
 }
 
@@ -68,7 +66,7 @@ func (p *Peer) SendOnStream(stream io.Writer, msg protocol.Message) error {
 	return p.codec.Encode(stream, msg)
 }
 
-func (p *Peer) acceptControlStream(ctx context.Context) (*quic.Stream, error) {
+func (p *Peer) acceptStream(ctx context.Context) (*quic.Stream, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -84,7 +82,7 @@ func (p *Peer) acceptControlStream(ctx context.Context) (*quic.Stream, error) {
 	return stream, nil
 }
 
-func (p *Peer) getControlStream(ctx context.Context) (*quic.Stream, error) {
+func (p *Peer) openStream(ctx context.Context) (*quic.Stream, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
