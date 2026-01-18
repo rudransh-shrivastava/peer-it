@@ -26,9 +26,8 @@ type ChunkRes struct {
 func (ChunkRes) Type() MessageType { return MsgChunkRes }
 
 type Discovery struct {
-	FileCount uint16
-	NodeID    [NodeIDSize]byte
-	Port      uint16
+	NodeID [NodeIDSize]byte
+	Port   uint16
 }
 
 func (Discovery) Type() MessageType { return MsgDiscovery }

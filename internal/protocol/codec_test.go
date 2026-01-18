@@ -76,9 +76,8 @@ func TestCodecDiscovery(t *testing.T) {
 	var buf bytes.Buffer
 
 	msg := &Discovery{
-		NodeID:    testNodeID("discoverable-node"),
-		Port:      59000,
-		FileCount: 5,
+		NodeID: testNodeID("discoverable-node"),
+		Port:   59000,
 	}
 
 	if err := codec.Encode(&buf, msg); err != nil {
@@ -95,8 +94,8 @@ func TestCodecDiscovery(t *testing.T) {
 		t.Fatalf("Expected *Discovery, got %T", decoded)
 	}
 
-	if decodedMsg.FileCount != 5 {
-		t.Errorf("Expected file count 5, got %d", decodedMsg.FileCount)
+	if decodedMsg.Port != 59000 {
+		t.Errorf("Expected port 59000, got %d", decodedMsg.Port)
 	}
 }
 
