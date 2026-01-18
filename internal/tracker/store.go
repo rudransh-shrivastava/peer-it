@@ -66,3 +66,17 @@ func (s *Store) ListFiles() []protocol.FileEntry {
 	}
 	return files
 }
+
+func (s *Store) GetPeers(hash protocol.FileHash) []Conn {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	f, exists := s.files[hash]
+	if !exists {
+		return nil
+	}
+
+	peers := make([]Conn, len(f.peers))
+	copy(peers, f.peers)
+	return peers
+}

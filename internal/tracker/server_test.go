@@ -213,6 +213,63 @@ func TestServerHandleConnReceiveError(t *testing.T) {
 	}
 }
 
+func TestServerHandlePeerListReqEmpty(t *testing.T) {
+	srv, conn := setupMockServerConn(t)
+	defer func() { _ = srv.Shutdown() }()
+
+	hash := protocol.FileHash{0x01, 0x02, 0x03}
+	srv.handleMessage(t.Context(), conn, &protocol.PeerListReq{FileHash: hash})
+
+	if len(conn.sentMsgs) != 1 {
+		t.Fatalf("Expected 1 sent message, got %d", len(conn.sentMsgs))
+	}
+
+	res, ok := conn.sentMsgs[0].(*protocol.PeerListRes)
+	if !ok {
+		t.Fatalf("Expected PeerListRes, got %T", conn.sentMsgs[0])
+	}
+
+	if res.FileHash != hash {
+		t.Error("FileHash mismatch")
+	}
+
+	if len(res.Peers) != 0 {
+		t.Errorf("Expected 0 peers, got %d", len(res.Peers))
+	}
+}
+
+func TestServerHandlePeerListReq(t *testing.T) {
+	srv, _ := setupMockServerConn(t)
+	defer func() { _ = srv.Shutdown() }()
+
+	fileName := "shared.txt"
+	fileSize := uint64(1024)
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%s%d", fileName, fileSize)))
+
+	peer1 := newMockConn("192.168.1.50:6000")
+	announce := &protocol.PeerAnnounce{
+		FileCount: 1,
+		Files:     []protocol.FileEntry{{Hash: hash, Name: fileName, Size: fileSize}},
+	}
+	srv.handleMessage(t.Context(), peer1, announce)
+
+	peer2 := newMockConn("192.168.1.100:5000")
+	srv.handleMessage(t.Context(), peer2, &protocol.PeerListReq{FileHash: hash})
+
+	if len(peer2.sentMsgs) != 1 {
+		t.Fatalf("Expected 1 sent message, got %d", len(peer2.sentMsgs))
+	}
+
+	res, ok := peer2.sentMsgs[0].(*protocol.PeerListRes)
+	if !ok {
+		t.Fatalf("Expected PeerListRes, got %T", peer2.sentMsgs[0])
+	}
+
+	if len(res.Peers) != 1 {
+		t.Errorf("Expected 1 peer, got %d", len(res.Peers))
+	}
+}
+
 func setupMockServerConn(t *testing.T) (*Server, *mockConn) {
 	t.Helper()
 

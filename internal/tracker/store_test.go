@@ -145,3 +145,28 @@ func TestStoreListFiles(t *testing.T) {
 		t.Errorf("Expected 2 files, got %d", len(files))
 	}
 }
+
+func TestStoreGetPeersEmpty(t *testing.T) {
+	store := NewStore()
+
+	peers := store.GetPeers(protocol.FileHash{0x01})
+	if peers != nil {
+		t.Errorf("Expected nil for non-existent file, got %v", peers)
+	}
+}
+
+func TestStoreGetPeers(t *testing.T) {
+	store := NewStore()
+
+	hash := protocol.FileHash{0x01}
+	files := []protocol.FileEntry{{Hash: hash, Name: "file.txt", Size: 1024}}
+	store.AddFiles(files)
+
+	peer := newMockConn("peer1")
+	store.AddPeer(files, peer)
+
+	peers := store.GetPeers(hash)
+	if len(peers) != 1 {
+		t.Errorf("Expected 1 peer, got %d", len(peers))
+	}
+}

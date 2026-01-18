@@ -108,6 +108,10 @@ func (s *Server) handleMessage(ctx context.Context, conn Conn, msg protocol.Mess
 		s.logger.Debug("Received PeerAnnounce, adding peer to database", "peer", conn.RemoteAddr())
 		announceMsg, _ := msg.(*protocol.PeerAnnounce)
 		s.handlePeerAnnounceMessage(conn, *announceMsg)
+	case protocol.MsgPeerListReq:
+		s.logger.Debug("Received PeerListReq", "peer", conn.RemoteAddr())
+		reqMsg, _ := msg.(*protocol.PeerListReq)
+		s.handlePeerListReqMessage(ctx, conn, reqMsg.FileHash)
 	case protocol.MsgPing:
 		s.logger.Debug("Received Ping, sending Pong", "peer", conn.RemoteAddr())
 		s.handlePingMessage(ctx, conn)
@@ -119,11 +123,26 @@ func (s *Server) handleMessage(ctx context.Context, conn Conn, msg protocol.Mess
 func (s *Server) handleFileListReqMessage(ctx context.Context, conn Conn) {
 	files := s.store.ListFiles()
 
-	fileListResMsg := protocol.FileListRes{
-		Files: files,
-	}
-	if err := conn.Send(ctx, &fileListResMsg); err != nil {
+	res := protocol.FileListRes{Files: files}
+	if err := conn.Send(ctx, &res); err != nil {
 		s.logger.Error("Failed to send FileListRes", "peer", conn.RemoteAddr(), "error", err)
+	}
+}
+
+func (s *Server) handlePeerListReqMessage(ctx context.Context, conn Conn, fileHash protocol.FileHash) {
+	peers := s.store.GetPeers(fileHash)
+
+	peerInfos := make([]protocol.PeerInfo, 0, len(peers))
+	for _, p := range peers {
+		info, ok := parseAddrToPeerInfo(p.RemoteAddr())
+		if ok {
+			peerInfos = append(peerInfos, info)
+		}
+	}
+
+	res := protocol.PeerListRes{FileHash: fileHash, Peers: peerInfos}
+	if err := conn.Send(ctx, &res); err != nil {
+		s.logger.Error("Failed to send PeerListRes", "peer", conn.RemoteAddr(), "error", err)
 	}
 }
 
