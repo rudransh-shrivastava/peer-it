@@ -51,6 +51,7 @@ type FileListReq struct{}
 
 func (FileListReq) Type() MessageType { return MsgFileListReq }
 
+// TODO(rudransh-shrivastava): Extend with peer count for each file.
 type FileListRes struct {
 	Files []FileEntry
 }

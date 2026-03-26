@@ -23,21 +23,6 @@ func NewStore() *Store {
 	}
 }
 
-func (s *Store) AddPeer(files []protocol.FileEntry, peer Conn) int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	added := 0
-	for _, file := range files {
-		if slices.Contains(s.files[file.Hash].peers, peer) {
-			continue
-		}
-		s.files[file.Hash].peers = append(s.files[file.Hash].peers, peer)
-		added++
-	}
-	return added
-}
-
 func (s *Store) AddFiles(files []protocol.FileEntry) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -56,15 +41,19 @@ func (s *Store) AddFiles(files []protocol.FileEntry) int {
 	return added
 }
 
-func (s *Store) ListFiles() []protocol.FileEntry {
+func (s *Store) AddPeer(files []protocol.FileEntry, peer Conn) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	files := []protocol.FileEntry{}
-	for _, file := range s.files {
-		files = append(files, *file.metadata)
+	added := 0
+	for _, file := range files {
+		if slices.Contains(s.files[file.Hash].peers, peer) {
+			continue
+		}
+		s.files[file.Hash].peers = append(s.files[file.Hash].peers, peer)
+		added++
 	}
-	return files
+	return added
 }
 
 func (s *Store) GetPeers(hash protocol.FileHash) []Conn {
@@ -79,4 +68,15 @@ func (s *Store) GetPeers(hash protocol.FileHash) []Conn {
 	peers := make([]Conn, len(f.peers))
 	copy(peers, f.peers)
 	return peers
+}
+
+func (s *Store) ListFiles() []protocol.FileEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	files := []protocol.FileEntry{}
+	for _, file := range s.files {
+		files = append(files, *file.metadata)
+	}
+	return files
 }
