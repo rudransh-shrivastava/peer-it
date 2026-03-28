@@ -99,24 +99,6 @@ func (s *Server) handleConn(ctx context.Context, conn Conn) {
 
 func (s *Server) handleMessage(ctx context.Context, conn Conn, msg protocol.Message) {
 	switch msg.Type() {
-	case protocol.MsgSTUNCandidates:
-		candsMsg, _ := msg.(*protocol.STUNCandidates)
-		// identify sender
-		senderID, ok := s.store.GetPeerID(conn)
-		if !ok {
-			// unknown sender; ignore
-			return
-		}
-		// pending channel was created with key (source, target)
-		// here TargetNodeID in the message is the intended recipient (source)
-		if ch, ok := s.store.GetPendingCallCh(candsMsg.TargetNodeID, senderID); ok {
-			// try to deliver to pending channel without blocking indefinitely
-			select {
-			case ch <- *candsMsg:
-			default:
-			}
-		}
-
 	case protocol.MsgCallReq:
 		reqMsg, _ := msg.(*protocol.CallReq)
 		s.logger.Debug("Received MsgCallReq, sending target info to peer", "target_node_id", reqMsg.TargetNodeID)
@@ -140,14 +122,15 @@ func (s *Server) handleMessage(ctx context.Context, conn Conn, msg protocol.Mess
 	}
 }
 
-// TODO(rudransh-shrivastava):
+// TODO(rudransh-shrivastava): Implement STUNCandidates message handler
 func (s *Server) handleCallReqMessage(ctx context.Context, conn Conn, msg protocol.CallReq) {
+	targetPeerID := msg.TargetNodeID
 	sourcePeerID, ok := s.store.GetPeerID(conn)
 	if !ok {
 		// TODO(rudransh-shrivastava): send error to source peer
 		return
 	}
-	targetPeerConn, ok := s.store.GetPeer(msg.TargetNodeID)
+	targetPeerConn, ok := s.store.GetPeer(targetPeerID)
 	if !ok {
 		// TODO(rudransh-shrivastava): send error to source peer
 		return
@@ -159,31 +142,20 @@ func (s *Server) handleCallReqMessage(ctx context.Context, conn Conn, msg protoc
 		s.logger.Error("Failed to send CallReq", "peer", sourcePeerID, "error", err)
 	}
 
-	// target peer ACKs by sending its STUN candidates (newly fetched)
-	pendingCallCh := make(chan protocol.STUNCandidates, 1)
-	s.store.AddPendingCallCh(sourcePeerID, msg.TargetNodeID, pendingCallCh)
+	// Will be consumed by STUNCandidates message handler
+	s.store.AddPendingCall(sourcePeerID, targetPeerID)
+	s.store.AddPendingCall(targetPeerID, sourcePeerID)
 
-	select {
-	case targetPeerSTUNCandidates := <-pendingCallCh:
-		// send target peer STUN candidates back to conn
-		// TODO(rudransh-shrivastava): add basic validation
-		if err := conn.Send(ctx, targetPeerSTUNCandidates); err != nil {
-			s.logger.Error("Failed to send STUNCandidates", "peer", conn.RemoteAddr(), "error", err)
-		}
-	case <-ctx.Done():
-		// TODO(rudransh-shrivastava): send timeout error to source peer; add timeout
-		s.store.RemovePendingCallCh(sourcePeerID, msg.TargetNodeID)
-		return
-	}
-	s.store.RemovePendingCallCh(sourcePeerID, msg.TargetNodeID)
-
-	// source peer receives STUN candidates and sends probes
-	// source peer sends its own STNU candidates (newly fetched) (fetch STUN candidates, send info and then send probes)
-	// source peer sends probes every 5 seconds for upto 30 seconds (?)
-	// target peer receives source peer STUN candidates
-	// target peer sends probes every 5 seconds for upto 30 seconds (?)
-	// If either peer notice a successful connection, they note the TXNID and connection gets established
-	// Tracker doesnt need to be informed
+	// NOTE: This happens in the background (in other go-routines):
+	// Target peer ACKs by sending its STUN candidates to tracker (newly fetched).
+	// Tracker sends source peer STUN candidates of target peer.
+	// Source peer receives STUN candidates and sends probes.
+	// Source peer sends its own STUN candidates (newly fetched) (fetch STUN candidates, send info and then send probes).
+	// Source peer sends probes every 5 seconds for upto 30 seconds (?).
+	// Target peer receives source peer STUN candidates.
+	// Target peer sends probes every 5 seconds for upto 30 seconds (?).
+	// If either peer notice a successful connection, they note the TXNID and connection gets established.
+	// Tracker doesnt need to be informed.
 }
 
 func (s *Server) handleFileListReqMessage(ctx context.Context, conn Conn) {

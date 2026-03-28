@@ -21,14 +21,14 @@ type Store struct {
 	mu           sync.Mutex
 	files        map[protocol.FileHash]*file
 	peers        map[protocol.NodeID]Conn
-	pendingCalls map[callKey]chan protocol.STUNCandidates
+	pendingCalls map[callKey]struct{}
 }
 
 func NewStore() *Store {
 	return &Store{
 		files:        make(map[protocol.FileHash]*file),
 		peers:        make(map[protocol.NodeID]Conn),
-		pendingCalls: make(map[callKey]chan protocol.STUNCandidates),
+		pendingCalls: make(map[callKey]struct{}),
 	}
 }
 
@@ -69,11 +69,25 @@ func (s *Store) AddPeer(files []protocol.FileEntry, peerID protocol.NodeID, conn
 	return added
 }
 
-func (s *Store) AddPendingCallCh(sourceID, targetID protocol.NodeID, ch chan protocol.STUNCandidates) {
+// Must be called twice with switched IDs to allow bi-directional communication.
+func (s *Store) AddPendingCall(sourceID, targetID protocol.NodeID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.pendingCalls[callKey{sourceID, targetID}] = ch
+	s.pendingCalls[callKey{sourceID, targetID}] = struct{}{}
+}
+
+// Returns true if the call was pending (and consumes the token)
+func (s *Store) ConsumePendingCall(sourceID, targetID protocol.NodeID) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := callKey{sourceID, targetID}
+	_, ok := s.pendingCalls[key]
+	if ok {
+		delete(s.pendingCalls, key)
+	}
+	return ok
 }
 
 func (s *Store) GetPeer(peerID protocol.NodeID) (Conn, bool) {
@@ -112,14 +126,6 @@ func (s *Store) GetPeers(hash protocol.FileHash) []protocol.NodeID {
 	return peers
 }
 
-func (s *Store) GetPendingCallCh(sourceID, targetID protocol.NodeID) (chan protocol.STUNCandidates, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	ch, ok := s.pendingCalls[callKey{sourceID, targetID}]
-	return ch, ok
-}
-
 func (s *Store) ListFiles() []protocol.FileEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -129,11 +135,4 @@ func (s *Store) ListFiles() []protocol.FileEntry {
 		files = append(files, *file.metadata)
 	}
 	return files
-}
-
-func (s *Store) RemovePendingCallCh(sourceID, targetID protocol.NodeID) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	delete(s.pendingCalls, callKey{sourceID, targetID})
 }

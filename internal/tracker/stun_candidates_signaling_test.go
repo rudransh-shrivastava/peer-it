@@ -3,7 +3,6 @@ package tracker
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/protocol"
 )
@@ -28,28 +27,10 @@ func TestSTUNCandidatesSignaling(t *testing.T) {
 	srv.store.peers[targetID] = targetConn
 	srv.store.mu.Unlock()
 
-	// Call from source to target — run in goroutine because it will block
-	// waiting for STUN candidates to be provided on the pending channel.
+	// Call from source to target; server should create pending tokens and
+	// forward a CallReq to the target.
 	ctx := context.Background()
-	go srv.handleMessage(ctx, sourceConn, &protocol.CallReq{TargetNodeID: targetID})
-
-	// Wait for the pending channel to be created by the server.
-	var ch chan protocol.STUNCandidates
-	var ok bool
-	deadline := time.After(200 * time.Millisecond)
-	for {
-		select {
-		case <-deadline:
-			t.Fatal("timed out waiting for pending call channel")
-		default:
-			ch, ok = srv.store.GetPendingCallCh(sourceID, targetID)
-			if ok && ch != nil {
-				goto GOTCH
-			}
-			time.Sleep(5 * time.Millisecond)
-		}
-	}
-GOTCH:
+	srv.handleMessage(ctx, sourceConn, &protocol.CallReq{TargetNodeID: targetID})
 
 	// Ensure the server forwarded a CallReq to the target connection.
 	if len(targetConn.sentMsgs) == 0 {
@@ -61,35 +42,11 @@ GOTCH:
 		t.Fatalf("expected CallReq.TargetNodeID %v, got %v", sourceID, callReq.TargetNodeID)
 	}
 
-	// Simulate the target replying with STUN candidates via the pending channel.
-	// Target should send STUN candidates intended for the source peer
-	candidates := protocol.STUNCandidates{
-		Candidates:   []protocol.STUNCandidate{{IP: "198.51.100.2", Port: 54321}},
-		TargetNodeID: sourceID,
+	// The server should have created pending call tokens for both directions.
+	if ok := srv.store.ConsumePendingCall(sourceID, targetID); !ok {
+		t.Fatalf("expected pending call for (%v,%v) to exist", sourceID, targetID)
 	}
-
-	select {
-	case ch <- candidates:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("timed out sending STUNCandidates into pending channel")
-	}
-
-	// Give server a brief moment to forward candidates to the source.
-	time.Sleep(10 * time.Millisecond)
-
-	if len(sourceConn.sentMsgs) == 0 {
-		t.Fatalf("expected STUNCandidates sent to source, none found")
-	}
-	// expect the server to forward a value of STUNCandidates
-	resVal, ok := sourceConn.sentMsgs[0].(protocol.STUNCandidates)
-	if !ok {
-		t.Fatalf("expected protocol.STUNCandidates (value) sent to source, got %T", sourceConn.sentMsgs[0])
-	}
-	res := resVal
-	if len(res.Candidates) != 1 {
-		t.Fatalf("expected 1 candidate forwarded to source, got %d", len(res.Candidates))
-	}
-	if res.TargetNodeID != sourceID {
-		t.Fatalf("expected STUNCandidates.TargetNodeID %v, got %v", sourceID, res.TargetNodeID)
+	if ok := srv.store.ConsumePendingCall(targetID, sourceID); !ok {
+		t.Fatalf("expected pending call for (%v,%v) to exist", targetID, sourceID)
 	}
 }
