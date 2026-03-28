@@ -101,8 +101,8 @@ func (s *Server) handleMessage(ctx context.Context, conn Conn, msg protocol.Mess
 	switch msg.Type() {
 	case protocol.MsgCallReq:
 		reqMsg, _ := msg.(*protocol.CallReq)
-		s.logger.Debug("Received MsgHolePunchReq, sending target info to peer", "target_node_id", reqMsg.TargetNodeID)
-		// TODO(rudransh-shrivastava): After implementing STUN probes
+		s.logger.Debug("Received MsgCallReq, sending target info to peer", "target_node_id", reqMsg.TargetNodeID)
+		s.handleCallReqMessage(ctx, conn, *reqMsg)
 	case protocol.MsgFileListReq:
 		s.logger.Debug("Received FileListReq, sending file list to peer", "peer", conn.RemoteAddr())
 		s.handleFileListReqMessage(ctx, conn)
@@ -120,6 +120,21 @@ func (s *Server) handleMessage(ctx context.Context, conn Conn, msg protocol.Mess
 	default:
 		s.logger.Warn("Unhandled message type", "type", msg.Type().String())
 	}
+}
+
+// TODO(rudransh-shrivastava):
+func (s *Server) handleCallReqMessage(ctx context.Context, conn Conn, msg protocol.CallReq) {
+	// FLOW:
+	// inform target peer that someone will connect with a nodeid
+	// target peer acks by sending its STUN info (newly fetched)
+	// send target peer STUN info back to conn
+	// source peer receives STUN info and sends probes
+	// source peer sends its own STNU info (newly fetched) (fetch STUN info, send info and then send probes)
+	// source peer sends probes every 5 seconds for upto 30 seconds (?)
+	// target peer receives source peer STUN info
+	// target peer sends probes every 5 seconds for upto 30 seconds (?)
+	// If either peer notice a successful connection, they note the TXNID and connection gets established
+	// Tracker doesnt need to be informed
 }
 
 func (s *Server) handleFileListReqMessage(ctx context.Context, conn Conn) {
