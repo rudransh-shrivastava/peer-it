@@ -59,8 +59,9 @@ func TestStoreAddPeer(t *testing.T) {
 	store.AddFiles(files)
 
 	peer1 := protocol.NodeID{1}
+	conn1 := newMockConn("peer1")
 
-	added := store.AddPeer(files, peer1)
+	added := store.AddPeer(files, peer1, conn1)
 	if added != 1 {
 		t.Errorf("Expected 1 peer added, got %d", added)
 	}
@@ -82,9 +83,10 @@ func TestStoreAddPeerNoDuplicate(t *testing.T) {
 	store.AddFiles(files)
 
 	peer1 := protocol.NodeID{1}
+	conn1 := newMockConn("peer1")
 
-	added1 := store.AddPeer(files, peer1)
-	added2 := store.AddPeer(files, peer1)
+	added1 := store.AddPeer(files, peer1, conn1)
+	added2 := store.AddPeer(files, peer1, conn1)
 
 	if added1 != 1 {
 		t.Errorf("First add: expected 1, got %d", added1)
@@ -112,9 +114,11 @@ func TestStoreAddPeerMultiplePeers(t *testing.T) {
 
 	peer1 := protocol.NodeID{1}
 	peer2 := protocol.NodeID{2}
+	conn1 := newMockConn("peer1")
+	conn2 := newMockConn("peer2")
 
-	store.AddPeer(files, peer1)
-	store.AddPeer(files, peer2)
+	store.AddPeer(files, peer1, conn1)
+	store.AddPeer(files, peer2, conn2)
 
 	if len(store.files[hash1].peers) != 2 {
 		t.Errorf("Expected 2 different peers, got %d", len(store.files[hash1].peers))
@@ -162,7 +166,8 @@ func TestStoreGetPeers(t *testing.T) {
 	store.AddFiles(files)
 
 	peer := protocol.NodeID{1}
-	store.AddPeer(files, peer)
+	conn := newMockConn("peer1")
+	store.AddPeer(files, peer, conn)
 
 	peers := store.GetPeers(hash)
 	if len(peers) != 1 {

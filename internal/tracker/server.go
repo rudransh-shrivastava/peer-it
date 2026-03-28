@@ -163,7 +163,7 @@ func (s *Server) handlePeerAnnounceMessage(conn Conn, msg protocol.PeerAnnounce)
 	peerID := generatePeerID()
 	addedFiles := s.store.AddFiles(msg.Files)
 	s.logger.Debug("Added files", "peer", conn.RemoteAddr(), "count", addedFiles)
-	addedPeerToFiles := s.store.AddPeer(msg.Files, peerID)
+	addedPeerToFiles := s.store.AddPeer(msg.Files, peerID, conn)
 	s.logger.Debug("Added peer to files", "peer", conn.RemoteAddr(), "count", addedPeerToFiles)
 }
 

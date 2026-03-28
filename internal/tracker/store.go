@@ -15,13 +15,13 @@ type file struct {
 type Store struct {
 	mu    sync.Mutex
 	files map[protocol.FileHash]*file
-	// TODO: generate NodeID and store per connection
-	// peers map[protocol.NodeID]Conn
+	peers map[protocol.NodeID][]Conn
 }
 
 func NewStore() *Store {
 	return &Store{
 		files: make(map[protocol.FileHash]*file),
+		peers: make(map[protocol.NodeID][]Conn),
 	}
 }
 
@@ -43,7 +43,7 @@ func (s *Store) AddFiles(files []protocol.FileEntry) int {
 	return added
 }
 
-func (s *Store) AddPeer(files []protocol.FileEntry, peerID protocol.NodeID) int {
+func (s *Store) AddPeer(files []protocol.FileEntry, peerID protocol.NodeID, conn Conn) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -53,6 +53,10 @@ func (s *Store) AddPeer(files []protocol.FileEntry, peerID protocol.NodeID) int 
 			continue
 		}
 		s.files[file.Hash].peers = append(s.files[file.Hash].peers, peerID)
+		if slices.Contains(s.peers[peerID], conn) {
+			continue
+		}
+		s.peers[peerID] = append(s.peers[peerID], conn)
 		added++
 	}
 	return added
