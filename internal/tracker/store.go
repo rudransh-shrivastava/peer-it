@@ -9,12 +9,14 @@ import (
 
 type file struct {
 	metadata *protocol.FileEntry
-	peers    []Conn
+	peers    []protocol.NodeID
 }
 
 type Store struct {
 	mu    sync.Mutex
 	files map[protocol.FileHash]*file
+	// TODO: generate NodeID and store per connection
+	// peers map[protocol.NodeID]Conn
 }
 
 func NewStore() *Store {
@@ -34,29 +36,29 @@ func (s *Store) AddFiles(files []protocol.FileEntry) int {
 		}
 		s.files[f.Hash] = &file{
 			metadata: &f,
-			peers:    []Conn{},
+			peers:    []protocol.NodeID{},
 		}
 		added++
 	}
 	return added
 }
 
-func (s *Store) AddPeer(files []protocol.FileEntry, peer Conn) int {
+func (s *Store) AddPeer(files []protocol.FileEntry, peerID protocol.NodeID) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	added := 0
 	for _, file := range files {
-		if slices.Contains(s.files[file.Hash].peers, peer) {
+		if slices.Contains(s.files[file.Hash].peers, peerID) {
 			continue
 		}
-		s.files[file.Hash].peers = append(s.files[file.Hash].peers, peer)
+		s.files[file.Hash].peers = append(s.files[file.Hash].peers, peerID)
 		added++
 	}
 	return added
 }
 
-func (s *Store) GetPeers(hash protocol.FileHash) []Conn {
+func (s *Store) GetPeers(hash protocol.FileHash) []protocol.NodeID {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -65,7 +67,7 @@ func (s *Store) GetPeers(hash protocol.FileHash) []Conn {
 		return nil
 	}
 
-	peers := make([]Conn, len(f.peers))
+	peers := make([]protocol.NodeID, len(f.peers))
 	copy(peers, f.peers)
 	return peers
 }

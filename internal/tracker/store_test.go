@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/protocol"
-	"github.com/rudransh-shrivastava/peer-it/internal/transport"
 )
 
 func TestStoreAddFiles(t *testing.T) {
@@ -59,7 +58,7 @@ func TestStoreAddPeer(t *testing.T) {
 	// First add the files to the store
 	store.AddFiles(files)
 
-	peer1 := &transport.Peer{}
+	peer1 := protocol.NodeID{1}
 
 	added := store.AddPeer(files, peer1)
 	if added != 1 {
@@ -82,7 +81,7 @@ func TestStoreAddPeerNoDuplicate(t *testing.T) {
 	// First add the files to the store
 	store.AddFiles(files)
 
-	peer1 := &transport.Peer{}
+	peer1 := protocol.NodeID{1}
 
 	added1 := store.AddPeer(files, peer1)
 	added2 := store.AddPeer(files, peer1)
@@ -111,8 +110,8 @@ func TestStoreAddPeerMultiplePeers(t *testing.T) {
 	// First add the files to the store
 	store.AddFiles(files)
 
-	peer1 := &transport.Peer{}
-	peer2 := &transport.Peer{}
+	peer1 := protocol.NodeID{1}
+	peer2 := protocol.NodeID{2}
 
 	store.AddPeer(files, peer1)
 	store.AddPeer(files, peer2)
@@ -162,7 +161,7 @@ func TestStoreGetPeers(t *testing.T) {
 	files := []protocol.FileEntry{{Hash: hash, Name: "file.txt", Size: 1024}}
 	store.AddFiles(files)
 
-	peer := newMockConn("peer1")
+	peer := protocol.NodeID{1}
 	store.AddPeer(files, peer)
 
 	peers := store.GetPeers(hash)

@@ -4,6 +4,8 @@ type Message interface {
 	Type() MessageType
 }
 
+type NodeID [NodeIDSize]byte
+
 type ChunkMeta struct {
 	Hash  FileHash
 	Index uint32
@@ -26,7 +28,7 @@ type ChunkRes struct {
 func (ChunkRes) Type() MessageType { return MsgChunkRes }
 
 type Discovery struct {
-	NodeID [NodeIDSize]byte
+	NodeID NodeID
 	Port   uint16
 }
 
@@ -75,15 +77,14 @@ type FileMetaRes struct {
 func (FileMetaRes) Type() MessageType { return MsgFileMetaRes }
 
 type HolePunchProbe struct {
-	SenderNodeID [NodeIDSize]byte
+	NodeID NodeID
+	TxnID  [TxnIDSize]byte
 }
 
 func (HolePunchProbe) Type() MessageType { return MsgHolePunchProbe }
 
 type HolePunchReq struct {
-	TargetIP     [16]byte
-	TargetNodeID [NodeIDSize]byte
-	TargetPort   uint16
+	TargetNodeID NodeID
 }
 
 func (HolePunchReq) Type() MessageType { return MsgHolePunchReq }
@@ -96,9 +97,7 @@ type PeerAnnounce struct {
 func (PeerAnnounce) Type() MessageType { return MsgPeerAnnounce }
 
 type PeerInfo struct {
-	IP     [16]byte
-	NodeID [NodeIDSize]byte
-	Port   uint16
+	NodeID NodeID
 }
 
 type PeerListReq struct {

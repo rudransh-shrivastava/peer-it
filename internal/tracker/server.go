@@ -2,8 +2,6 @@ package tracker
 
 import (
 	"context"
-	"crypto/sha256"
-	"fmt"
 	"log/slog"
 	"net"
 
@@ -104,6 +102,10 @@ func (s *Server) handleMessage(ctx context.Context, conn Conn, msg protocol.Mess
 	case protocol.MsgFileListReq:
 		s.logger.Debug("Received FileListReq, sending file list to peer", "peer", conn.RemoteAddr())
 		s.handleFileListReqMessage(ctx, conn)
+	case protocol.MsgHolePunchReq:
+		reqMsg, _ := msg.(*protocol.HolePunchReq)
+		s.logger.Debug("Received MsgHolePunchReq, sending request to target", "target_node_id", reqMsg.TargetNodeID)
+		// TODO(rudransh-shrivastava): After implementing STUN probes
 	case protocol.MsgPeerAnnounce:
 		s.logger.Debug("Received PeerAnnounce, adding peer to database", "peer", conn.RemoteAddr())
 		announceMsg, _ := msg.(*protocol.PeerAnnounce)
@@ -134,10 +136,7 @@ func (s *Server) handlePeerListReqMessage(ctx context.Context, conn Conn, fileHa
 
 	peerInfos := make([]protocol.PeerInfo, 0, len(peers))
 	for _, p := range peers {
-		info, ok := parseAddrToPeerInfo(p.RemoteAddr())
-		if ok {
-			peerInfos = append(peerInfos, info)
-		}
+		peerInfos = append(peerInfos, protocol.PeerInfo{NodeID: p})
 	}
 
 	res := protocol.PeerListRes{FileHash: fileHash, Peers: peerInfos}
@@ -161,9 +160,10 @@ func (s *Server) handlePeerAnnounceMessage(conn Conn, msg protocol.PeerAnnounce)
 		}
 	}
 
+	peerID := generatePeerID()
 	addedFiles := s.store.AddFiles(msg.Files)
 	s.logger.Debug("Added files", "peer", conn.RemoteAddr(), "count", addedFiles)
-	addedPeerToFiles := s.store.AddPeer(msg.Files, conn)
+	addedPeerToFiles := s.store.AddPeer(msg.Files, peerID)
 	s.logger.Debug("Added peer to files", "peer", conn.RemoteAddr(), "count", addedPeerToFiles)
 }
 
@@ -171,11 +171,6 @@ func (s *Server) handlePingMessage(ctx context.Context, conn Conn) {
 	if err := conn.Send(ctx, &protocol.Pong{}); err != nil {
 		s.logger.Error("Failed to send Pong", "peer", conn.RemoteAddr(), "error", err)
 	}
-}
-
-func generateHash(file *protocol.FileEntry) protocol.FileHash {
-	data := fmt.Sprintf("%s%d", file.Name, file.Size)
-	return sha256.Sum256([]byte(data))
 }
 
 type transportAdapter struct {

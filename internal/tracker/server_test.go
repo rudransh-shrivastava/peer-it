@@ -82,28 +82,6 @@ func TestServerHandlePeerAnnounce(t *testing.T) {
 	}
 }
 
-func TestGenerateHash(t *testing.T) {
-	file := &protocol.FileEntry{Name: "test.txt", Size: 1024}
-	hash := generateHash(file)
-
-	expected := sha256.Sum256([]byte("test.txt1024"))
-	if hash != expected {
-		t.Errorf("Hash mismatch")
-	}
-}
-
-func TestGenerateHashDifferentInputs(t *testing.T) {
-	file1 := &protocol.FileEntry{Name: "file1.txt", Size: 1024}
-	file2 := &protocol.FileEntry{Name: "file2.txt", Size: 1024}
-
-	hash1 := generateHash(file1)
-	hash2 := generateHash(file2)
-
-	if hash1 == hash2 {
-		t.Error("Different files should have different hashes")
-	}
-}
-
 func TestServerHandlePeerAnnounceMismatchedFileCount(t *testing.T) {
 	srv, conn := setupMockServerConn(t)
 	defer func() { _ = srv.Shutdown() }()

@@ -5,6 +5,7 @@ const (
 	MaxChunkSize   = 1024 * 1024
 	MaxPayloadSize = 1280
 	NodeIDSize     = 16
+	TxnIDSize      = 16
 )
 
 type MessageType uint16

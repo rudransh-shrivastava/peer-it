@@ -1,58 +1,45 @@
 package tracker
 
 import (
+	"crypto/sha256"
 	"testing"
+
+	"github.com/rudransh-shrivastava/peer-it/internal/protocol"
 )
 
-func TestParseAddrToPeerInfo(t *testing.T) {
-	tests := []struct {
-		addr     string
-		wantOk   bool
-		wantIP   [16]byte
-		wantPort uint16
-	}{
-		{
-			addr:     "192.168.1.100:5000",
-			wantOk:   true,
-			wantIP:   [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 168, 1, 100},
-			wantPort: 5000,
-		},
-		{
-			addr:     "[::1]:8080",
-			wantOk:   true,
-			wantIP:   [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-			wantPort: 8080,
-		},
-		{
-			addr:   "invalid",
-			wantOk: false,
-		},
-		{
-			addr:   "192.168.1.1:notaport",
-			wantOk: false,
-		},
-		{
-			addr:   "notanip:5000",
-			wantOk: false,
-		},
+func TestGenerateHash(t *testing.T) {
+	file := &protocol.FileEntry{Name: "test.txt", Size: 1024}
+	hash := generateHash(file)
+
+	expected := sha256.Sum256([]byte("test.txt1024"))
+	if hash != expected {
+		t.Errorf("Hash mismatch")
+	}
+}
+
+func TestGeneratePeerID(t *testing.T) {
+	// use the shared mockConn from mocks_test.go
+	id := generatePeerID()
+
+	if len(id) != protocol.NodeIDSize {
+		t.Fatalf("unexpected NodeID size: got %d, want %d", len(id), protocol.NodeIDSize)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.addr, func(t *testing.T) {
-			info, ok := parseAddrToPeerInfo(tt.addr)
-			if ok != tt.wantOk {
-				t.Errorf("parseAddrToPeerInfo(%q) ok = %v, want %v", tt.addr, ok, tt.wantOk)
-				return
-			}
-			if !ok {
-				return
-			}
-			if info.IP != tt.wantIP {
-				t.Errorf("IP = %v, want %v", info.IP, tt.wantIP)
-			}
-			if info.Port != tt.wantPort {
-				t.Errorf("Port = %d, want %d", info.Port, tt.wantPort)
-			}
-		})
+	// Generate another ID and ensure they are different (extremely likely).
+	id2 := generatePeerID()
+	if id == id2 {
+		t.Error("generatePeerID returned the same ID twice")
+	}
+}
+
+func TestGenerateHashDifferentInputs(t *testing.T) {
+	file1 := &protocol.FileEntry{Name: "file1.txt", Size: 1024}
+	file2 := &protocol.FileEntry{Name: "file2.txt", Size: 1024}
+
+	hash1 := generateHash(file1)
+	hash2 := generateHash(file2)
+
+	if hash1 == hash2 {
+		t.Error("Different files should have different hashes")
 	}
 }

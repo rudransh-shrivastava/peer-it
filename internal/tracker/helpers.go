@@ -1,33 +1,19 @@
 package tracker
 
 import (
-	"net"
-	"strconv"
+	"crypto/rand"
+	"crypto/sha256"
+	"fmt"
 
 	"github.com/rudransh-shrivastava/peer-it/internal/protocol"
 )
 
-func parseAddrToPeerInfo(addr string) (protocol.PeerInfo, bool) {
-	host, portStr, err := net.SplitHostPort(addr)
-	if err != nil {
-		return protocol.PeerInfo{}, false
-	}
+func generateHash(file *protocol.FileEntry) protocol.FileHash {
+	data := fmt.Sprintf("%s%d", file.Name, file.Size)
+	return sha256.Sum256([]byte(data))
+}
 
-	port, err := strconv.ParseUint(portStr, 10, 16)
-	if err != nil {
-		return protocol.PeerInfo{}, false
-	}
-
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return protocol.PeerInfo{}, false
-	}
-
-	var ipBytes [16]byte
-	copy(ipBytes[:], ip.To16())
-
-	return protocol.PeerInfo{
-		IP:   ipBytes,
-		Port: uint16(port),
-	}, true
+func generatePeerID() (id protocol.NodeID) {
+	_, _ = rand.Read(id[:])
+	return id
 }

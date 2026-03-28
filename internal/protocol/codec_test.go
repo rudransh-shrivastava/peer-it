@@ -287,7 +287,7 @@ func TestCodecHolePunchProbe(t *testing.T) {
 	var buf bytes.Buffer
 
 	msg := &HolePunchProbe{
-		SenderNodeID: testNodeID("sender-peer"),
+		TxnID: testTxnID("sender-peer"),
 	}
 
 	if err := codec.Encode(&buf, msg); err != nil {
@@ -304,8 +304,8 @@ func TestCodecHolePunchProbe(t *testing.T) {
 		t.Fatalf("Expected *HolePunchProbe, got %T", decoded)
 	}
 
-	if decodedMsg.SenderNodeID != testNodeID("sender-peer") {
-		t.Errorf("SenderNodeID mismatch")
+	if decodedMsg.TxnID != testTxnID("sender-peer") {
+		t.Errorf("TxnID mismatch")
 	}
 }
 
@@ -315,8 +315,6 @@ func TestCodecHolePunchReq(t *testing.T) {
 
 	msg := &HolePunchReq{
 		TargetNodeID: testNodeID("target-peer"),
-		TargetIP:     testIPv4(203, 0, 113, 50),
-		TargetPort:   59001,
 	}
 
 	if err := codec.Encode(&buf, msg); err != nil {
@@ -333,8 +331,8 @@ func TestCodecHolePunchReq(t *testing.T) {
 		t.Fatalf("Expected *HolePunchReq, got %T", decoded)
 	}
 
-	if decodedMsg.TargetPort != 59001 {
-		t.Errorf("Expected port 59001, got %d", decodedMsg.TargetPort)
+	if decodedMsg.TargetNodeID != testNodeID("target-peer") {
+		t.Errorf("TargetNodeID mismatch")
 	}
 }
 
@@ -399,8 +397,8 @@ func TestCodecPeerListReqRes(t *testing.T) {
 	res := &PeerListRes{
 		FileHash: fileHash,
 		Peers: []PeerInfo{
-			{NodeID: testNodeID("peer1"), IP: testIPv4(192, 168, 1, 100), Port: 59001},
-			{NodeID: testNodeID("peer2"), IP: testIPv4(192, 168, 1, 101), Port: 59002},
+			{NodeID: testNodeID("peer1")},
+			{NodeID: testNodeID("peer2")},
 		},
 	}
 
@@ -512,6 +510,12 @@ func testIPv4(a, b, c, d byte) [16]byte {
 
 func testNodeID(s string) [NodeIDSize]byte {
 	var id [NodeIDSize]byte
+	copy(id[:], []byte(s))
+	return id
+}
+
+func testTxnID(s string) [TxnIDSize]byte {
+	var id [TxnIDSize]byte
 	copy(id[:], []byte(s))
 	return id
 }
