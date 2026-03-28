@@ -120,3 +120,17 @@ func (Ping) Type() MessageType { return MsgPing }
 type Pong struct{}
 
 func (Pong) Type() MessageType { return MsgPong }
+
+type STUNCandidate struct {
+	IP   string // string for now
+	Port int
+}
+
+func (STUNCandidate) Type() MessageType { return MsgSTUNCandidate }
+
+type STUNCandidates struct {
+	Candidates   []STUNCandidate
+	TargetNodeID NodeID
+}
+
+func (STUNCandidates) Type() MessageType { return MsgSTUNCandidates }

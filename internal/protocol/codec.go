@@ -23,6 +23,8 @@ func init() {
 	gob.Register(&PeerListRes{})
 	gob.Register(&Ping{})
 	gob.Register(&Pong{})
+	gob.Register(&STUNCandidates{})
+	gob.Register(&STUNCandidate{})
 }
 
 type Codec struct {

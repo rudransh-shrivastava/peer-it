@@ -26,6 +26,8 @@ const (
 	MsgPeerListRes    MessageType = 0x0042
 	MsgPing           MessageType = 0x0001
 	MsgPong           MessageType = 0x0002
+	MsgSTUNCandidate  MessageType = 0x0003
+	MsgSTUNCandidates MessageType = 0x0004
 )
 
 func (t MessageType) String() string {
@@ -60,6 +62,10 @@ func (t MessageType) String() string {
 		return "PING"
 	case MsgPong:
 		return "PONG"
+	case MsgSTUNCandidate:
+		return "STUN_CANDIDATE"
+	case MsgSTUNCandidates:
+		return "STUN_CANDIDATES"
 	default:
 		return "UNKNOWN"
 	}

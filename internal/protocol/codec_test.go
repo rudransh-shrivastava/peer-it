@@ -491,6 +491,55 @@ func TestMessageTypeString(t *testing.T) {
 	}
 }
 
+func TestCodecSTUNCandidateAndList(t *testing.T) {
+	codec := NewCodec()
+	var buf bytes.Buffer
+
+	cand := &STUNCandidate{IP: "203.0.113.5", Port: 3478}
+	if err := codec.Encode(&buf, cand); err != nil {
+		t.Fatalf("Encode STUNCandidate failed: %v", err)
+	}
+
+	decoded, err := codec.Decode(&buf)
+	if err != nil {
+		t.Fatalf("Decode STUNCandidate failed: %v", err)
+	}
+
+	decodedCand, ok := decoded.(*STUNCandidate)
+	if !ok {
+		t.Fatalf("Expected *STUNCandidate, got %T", decoded)
+	}
+	if decodedCand.IP != cand.IP || decodedCand.Port != cand.Port {
+		t.Errorf("STUNCandidate mismatch: got %+v, want %+v", decodedCand, cand)
+	}
+
+	// Now test STUNCandidates (list) — updated to include TargetNodeID
+	buf.Reset()
+	list := &STUNCandidates{
+		Candidates:   []STUNCandidate{{IP: "198.51.100.2", Port: 54321}, {IP: "203.0.113.5", Port: 3478}},
+		TargetNodeID: testNodeID("target-peer"),
+	}
+	if err := codec.Encode(&buf, list); err != nil {
+		t.Fatalf("Encode STUNCandidates failed: %v", err)
+	}
+
+	decoded, err = codec.Decode(&buf)
+	if err != nil {
+		t.Fatalf("Decode STUNCandidates failed: %v", err)
+	}
+
+	decodedList, ok := decoded.(*STUNCandidates)
+	if !ok {
+		t.Fatalf("Expected *STUNCandidates, got %T", decoded)
+	}
+	if len(decodedList.Candidates) != 2 {
+		t.Fatalf("Expected 2 candidates, got %d", len(decodedList.Candidates))
+	}
+	if decodedList.TargetNodeID != testNodeID("target-peer") {
+		t.Fatalf("Expected TargetNodeID %v, got %v", testNodeID("target-peer"), decodedList.TargetNodeID)
+	}
+}
+
 func testHash(s string) FileHash {
 	var h FileHash
 	copy(h[:], []byte(s))
