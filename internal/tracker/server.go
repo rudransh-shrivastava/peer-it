@@ -99,13 +99,13 @@ func (s *Server) handleConn(ctx context.Context, conn Conn) {
 
 func (s *Server) handleMessage(ctx context.Context, conn Conn, msg protocol.Message) {
 	switch msg.Type() {
+	case protocol.MsgCallReq:
+		reqMsg, _ := msg.(*protocol.CallReq)
+		s.logger.Debug("Received MsgHolePunchReq, sending target info to peer", "target_node_id", reqMsg.TargetNodeID)
+		// TODO(rudransh-shrivastava): After implementing STUN probes
 	case protocol.MsgFileListReq:
 		s.logger.Debug("Received FileListReq, sending file list to peer", "peer", conn.RemoteAddr())
 		s.handleFileListReqMessage(ctx, conn)
-	case protocol.MsgHolePunchReq:
-		reqMsg, _ := msg.(*protocol.HolePunchReq)
-		s.logger.Debug("Received MsgHolePunchReq, sending request to target", "target_node_id", reqMsg.TargetNodeID)
-		// TODO(rudransh-shrivastava): After implementing STUN probes
 	case protocol.MsgPeerAnnounce:
 		s.logger.Debug("Received PeerAnnounce, adding peer to database", "peer", conn.RemoteAddr())
 		announceMsg, _ := msg.(*protocol.PeerAnnounce)

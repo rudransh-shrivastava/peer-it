@@ -11,6 +11,7 @@ const (
 type MessageType uint16
 
 const (
+	MsgCallReq        MessageType = 0x0060
 	MsgChunkReq       MessageType = 0x0030
 	MsgChunkRes       MessageType = 0x0031
 	MsgDiscovery      MessageType = 0x0050
@@ -20,7 +21,6 @@ const (
 	MsgFileMetaReq    MessageType = 0x0020
 	MsgFileMetaRes    MessageType = 0x0021
 	MsgHolePunchProbe MessageType = 0x0061
-	MsgHolePunchReq   MessageType = 0x0060
 	MsgPeerAnnounce   MessageType = 0x0040
 	MsgPeerListReq    MessageType = 0x0041
 	MsgPeerListRes    MessageType = 0x0042
@@ -30,6 +30,8 @@ const (
 
 func (t MessageType) String() string {
 	switch t {
+	case MsgCallReq:
+		return "CALL_REQ"
 	case MsgChunkReq:
 		return "CHUNK_REQ"
 	case MsgChunkRes:
@@ -48,8 +50,6 @@ func (t MessageType) String() string {
 		return "FILE_META_RES"
 	case MsgHolePunchProbe:
 		return "HOLE_PUNCH_PROBE"
-	case MsgHolePunchReq:
-		return "HOLE_PUNCH_REQ"
 	case MsgPeerAnnounce:
 		return "PEER_ANNOUNCE"
 	case MsgPeerListReq:

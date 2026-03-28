@@ -8,6 +8,7 @@ import (
 )
 
 func init() {
+	gob.Register(&CallReq{})
 	gob.Register(&ChunkReq{})
 	gob.Register(&ChunkRes{})
 	gob.Register(&Discovery{})
@@ -17,7 +18,6 @@ func init() {
 	gob.Register(&FileMetaReq{})
 	gob.Register(&FileMetaRes{})
 	gob.Register(&HolePunchProbe{})
-	gob.Register(&HolePunchReq{})
 	gob.Register(&PeerAnnounce{})
 	gob.Register(&PeerListReq{})
 	gob.Register(&PeerListRes{})

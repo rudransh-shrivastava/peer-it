@@ -6,6 +6,12 @@ type Message interface {
 
 type NodeID [NodeIDSize]byte
 
+type CallReq struct {
+	TargetNodeID NodeID
+}
+
+func (CallReq) Type() MessageType { return MsgCallReq }
+
 type ChunkMeta struct {
 	Hash  FileHash
 	Index uint32
@@ -82,12 +88,6 @@ type HolePunchProbe struct {
 }
 
 func (HolePunchProbe) Type() MessageType { return MsgHolePunchProbe }
-
-type HolePunchReq struct {
-	TargetNodeID NodeID
-}
-
-func (HolePunchReq) Type() MessageType { return MsgHolePunchReq }
 
 type PeerAnnounce struct {
 	FileCount uint16

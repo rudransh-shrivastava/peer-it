@@ -5,6 +5,33 @@ import (
 	"testing"
 )
 
+func TestCodecCallReq(t *testing.T) {
+	codec := NewCodec()
+	var buf bytes.Buffer
+
+	msg := &CallReq{
+		TargetNodeID: testNodeID("target-peer"),
+	}
+
+	if err := codec.Encode(&buf, msg); err != nil {
+		t.Fatalf("Encode CallReq failed: %v", err)
+	}
+
+	decoded, err := codec.Decode(&buf)
+	if err != nil {
+		t.Fatalf("Decode CallReq failed: %v", err)
+	}
+
+	decodedMsg, ok := decoded.(*CallReq)
+	if !ok {
+		t.Fatalf("Expected *CallReq, got %T", decoded)
+	}
+
+	if decodedMsg.TargetNodeID != testNodeID("target-peer") {
+		t.Errorf("TargetNodeID mismatch")
+	}
+}
+
 func TestCodecChunkReqRes(t *testing.T) {
 	codec := NewCodec()
 	var buf bytes.Buffer
@@ -306,33 +333,6 @@ func TestCodecHolePunchProbe(t *testing.T) {
 
 	if decodedMsg.TxnID != testTxnID("sender-peer") {
 		t.Errorf("TxnID mismatch")
-	}
-}
-
-func TestCodecHolePunchReq(t *testing.T) {
-	codec := NewCodec()
-	var buf bytes.Buffer
-
-	msg := &HolePunchReq{
-		TargetNodeID: testNodeID("target-peer"),
-	}
-
-	if err := codec.Encode(&buf, msg); err != nil {
-		t.Fatalf("Encode HolePunchReq failed: %v", err)
-	}
-
-	decoded, err := codec.Decode(&buf)
-	if err != nil {
-		t.Fatalf("Decode HolePunchReq failed: %v", err)
-	}
-
-	decodedMsg, ok := decoded.(*HolePunchReq)
-	if !ok {
-		t.Fatalf("Expected *HolePunchReq, got %T", decoded)
-	}
-
-	if decodedMsg.TargetNodeID != testNodeID("target-peer") {
-		t.Errorf("TargetNodeID mismatch")
 	}
 }
 
