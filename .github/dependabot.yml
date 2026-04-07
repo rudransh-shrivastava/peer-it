@@ -2,12 +2,17 @@ version: 2
 
 updates:
   - package-ecosystem: github-actions
+    cooldown:
+      default-days: 21
     directory: /
     schedule:
       interval: daily
     target-branch: main
+    cooldown: 
 
   - package-ecosystem: gomod
+    cooldown:
+      default-days: 21
     directory: /
     schedule:
       interval: daily
