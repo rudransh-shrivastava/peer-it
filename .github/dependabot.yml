@@ -1,5 +1,4 @@
 version: 2
-
 updates:
   - package-ecosystem: github-actions
     cooldown:
@@ -8,7 +7,6 @@ updates:
     schedule:
       interval: daily
     target-branch: main
-    cooldown: 
 
   - package-ecosystem: gomod
     cooldown:
