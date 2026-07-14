@@ -32,7 +32,7 @@ jobs:
         run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 
       - name: Set up pre-commit cache
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
